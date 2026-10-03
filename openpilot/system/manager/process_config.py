@@ -196,4 +196,13 @@ if os.path.exists("../../third_party/copyparty/copyparty-sfx.py"):
   copyparty_args += ["-q"]
   procs += [NativeProcess("copyparty-sfx", "openpilot/third_party/copyparty", ["./copyparty-sfx.py", *copyparty_args], and_(only_offroad, use_copyparty))]
 
+# sunnyconf — local schema-driven config daemon (HTTP + mDNS over WiFi). Runs onroad AND offroad so
+# settings stay reachable on a parked car. Registered only when the submodule is checked out, so a
+# missing/uninitialized sunnyconf/ never crash-loops the manager.
+# The repo root is 2 levels up from this file on the old layout (system/manager/) but 3 levels up now
+# that everything lives under openpilot/, so probe both instead of hardcoding one depth.
+_sunnyconf_here = os.path.dirname(os.path.abspath(__file__))
+if any(os.path.exists(os.path.join(_sunnyconf_here, *[".."] * _up, "sunnyconf", "daemon", "main.py")) for _up in (2, 3)):
+  procs.append(PythonProcess("sunnyconf", "sunnyconf.daemon.main", always_run, restart_if_crash=True))
+
 managed_processes = {p.name: p for p in procs}

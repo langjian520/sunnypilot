@@ -1,0 +1,3 @@
+[submodule "sunnyconf"]
+	path = sunnyconf
+	url = https://github.com/Falseclock/sunnyconf.git

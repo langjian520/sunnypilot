@@ -8,6 +8,7 @@ from openpilot.common.time_helpers import system_time_valid
 from openpilot.system.ui.widgets.scroller import NavRawScrollPanel, NavScroller
 from openpilot.selfdrive.ui.mici.widgets.button import BigButton, BigCircleButton
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigDialog, BigConfirmationDialog
+from openpilot.selfdrive.ui.mici.widgets.dialog import BigInputDialog
 from openpilot.selfdrive.ui.mici.widgets.pairing_dialog import PairingDialog
 from openpilot.selfdrive.ui.mici.onroad.cabin_camera_dialog import CabinCameraDialog
 from openpilot.selfdrive.ui.mici.layouts.onboarding import TrainingGuide, TermsPage
@@ -200,9 +201,23 @@ class DeviceLayoutMici(NavScroller):
     terms_btn = BigButton("terms &\nconditions", "", gui_app.texture("icons_mici/settings/device/info.png", 64, 64))
     terms_btn.set_click_callback(lambda: gui_app.push_widget(ReviewTermsPage()))
 
+    # sunnyconf pairing code — secret typed into the sunnyconf app to pair a device over Wi-Fi
+    pairing_code_btn = BigButton("pairing\ncode",
+                                 "Set" if (ui_state.params.get("SunnyconfPairingCode") or "") else "Not set",
+                                 gui_app.texture("icons_mici/settings/device/info.png", 64, 64))
+
+    def _open_pairing_code():
+      def _save(code):
+        ui_state.params.put("SunnyconfPairingCode", code or "")
+        pairing_code_btn.set_value("Set" if code else "Not set")
+      cur = ui_state.params.get("SunnyconfPairingCode") or ""
+      gui_app.push_widget(BigInputDialog("enter pairing code...", cur, minimum_length=0, confirm_callback=_save))
+    pairing_code_btn.set_click_callback(_open_pairing_code)
+
     self._scroller.add_widgets([
       DeviceInfoLayoutMici(),
       PairBigButton(),
+      pairing_code_btn,
       review_training_guide_btn,
       cabin_cam_btn,
       terms_btn,
