@@ -203,6 +203,7 @@ if os.path.exists("../../third_party/copyparty/copyparty-sfx.py"):
 # that everything lives under openpilot/, so probe both instead of hardcoding one depth.
 _sunnyconf_here = os.path.dirname(os.path.abspath(__file__))
 if any(os.path.exists(os.path.join(_sunnyconf_here, *[".."] * _up, "sunnyconf", "daemon", "main.py")) for _up in (2, 3)):
-  procs.append(PythonProcess("sunnyconf", "sunnyconf.daemon.main", always_run, restart_if_crash=True))
+  # NOTE: PythonProcess here takes (name, module, should_run, enabled, sigkill) — no restart_if_crash.
+  procs.append(PythonProcess("sunnyconf", "sunnyconf.daemon.main", always_run))
 
 managed_processes = {p.name: p for p in procs}
