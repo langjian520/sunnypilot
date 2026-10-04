@@ -130,6 +130,13 @@ class Params:
 
   def check_key(self, key):
     key = ensure_bytes(key)
+    # sunnyconf: SunnyconfPairingCode is declared in params_keys.h, but this device runs the release
+    # build whose libparams_c.so was compiled before the key existed, and launch_chffrplus.sh skips
+    # ./build.py because the `prebuilt` marker is present — so the native table has no entry for it.
+    # Storage itself is key-agnostic (a param is just a file under /data/params/), so allow this one
+    # key here instead of rebuilding native code on the device after every update.
+    if key == b"SunnyconfPairingCode":
+      return key
     if b"\0" in key or not params_check_key(self.p, key):
       raise UnknownKeyName(key)
     return key
