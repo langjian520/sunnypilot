@@ -871,3 +871,146 @@ msgstr "✓ 已订阅"
 msgid "🔥 Firehose Mode 🔥"
 msgstr "🔥 Firehose 模式 🔥"
 
+
+#: openpilot/selfdrive/ui/mici (hardcoded labels, translated out-of-tree)
+msgid "End-to-End Longitudinal Control"
+msgstr "端到端纵向控制"
+
+msgid "New Driving Visualization"
+msgstr "新驾驶可视化"
+
+msgid "Not set"
+msgstr "未设置"
+
+msgid "SSH keys"
+msgstr "SSH 密钥"
+
+msgid "Set"
+msgstr "设置"
+
+msgid "allow data uploading"
+msgstr "允许上传数据"
+
+msgid "alpha longitudinal"
+msgstr "Alpha 纵向控制"
+
+msgid "always-on driver monitor"
+msgstr "常开驾驶员监测"
+
+msgid "apn settings"
+msgstr "APN 设置"
+
+msgid "branch"
+msgstr "分支"
+
+msgid "cellular metered"
+msgstr "移动网络按流量计费"
+
+msgid "developer"
+msgstr "开发者"
+
+msgid "device"
+msgstr "设备"
+
+msgid "device ID"
+msgstr "设备 ID"
+
+msgid "do you want to share video data for training?"
+msgstr "要共享视频数据用于训练吗？"
+
+msgid "driver camera data"
+msgstr "驾驶员摄像头数据"
+
+msgid "driving personality"
+msgstr "驾驶风格"
+
+msgid "edit"
+msgstr "编辑"
+
+msgid "enable roaming"
+msgstr "允许漫游"
+
+msgid "enable sunnypilot"
+msgstr "启用 sunnypilot"
+
+msgid "enable tethering"
+msgstr "启用热点共享"
+
+msgid "enabling alpha longitudinal"
+msgstr "正在启用 Alpha 纵向控制"
+
+msgid "experimental mode"
+msgstr "实验模式"
+
+msgid "firehose"
+msgstr "路况采集"
+
+msgid "joystick debug mode"
+msgstr "摇杆调试模式"
+
+msgid "lane departure warnings"
+msgstr "车道偏离预警"
+
+msgid "lateral maneuver mode"
+msgstr "横向机动模式"
+
+msgid "longitudinal maneuver mode"
+msgstr "纵向机动模式"
+
+msgid "looking for driver"
+msgstr "正在寻找驾驶员"
+
+msgid "network"
+msgstr "网络"
+
+msgid "no, don't upload"
+msgstr "不，不上传"
+
+msgid "or go to https://sunnypilot.ai/terms"
+msgstr "或访问 https://sunnypilot.ai/terms"
+
+msgid "pair with comma connect"
+msgstr "与 comma connect 配对"
+
+msgid "record & upload cabin camera"
+msgstr "录制并上传车内摄像头"
+
+msgid "record & upload mic audio"
+msgstr "录制并上传麦克风音频"
+
+msgid "regulatory info"
+msgstr "法规信息"
+
+msgid "scroll to continue"
+msgstr "滚动以继续"
+
+msgid "serial"
+msgstr "序列号"
+
+msgid "software"
+msgstr "软件"
+
+msgid "swipe for QR code"
+msgstr "滑动查看二维码"
+
+msgid "test"
+msgstr "测试"
+
+msgid "tethering password"
+msgstr "热点密码"
+
+msgid "toggles"
+msgstr "切换"
+
+msgid "ui debug mode"
+msgstr "界面调试模式"
+
+msgid "use metric units"
+msgstr "使用公制单位"
+
+msgid "version"
+msgstr "版本"
+
+msgid "what is sunnypilot?"
+msgstr "什么是 sunnypilot？"
+

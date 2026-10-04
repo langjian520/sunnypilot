@@ -8,6 +8,7 @@ from openpilot.system.ui.lib.application import gui_app, FontWeight, DEFAULT_TEX
 from openpilot.system.ui.widgets import Widget
 from openpilot.system.ui.lib.text_measure import measure_text_cached
 from openpilot.system.ui.lib.wrap_text import wrap_text
+from openpilot.system.ui.lib.multilang import multilang
 
 ICON_PADDING = 15
 
@@ -15,8 +16,30 @@ ICON_PADDING = 15
 # TODO: make this common
 def _resolve_value(value, default=""):
   if callable(value):
-    return value()
-  return value if value is not None else default
+    value = value()
+  elif value is None:
+    value = default
+  if isinstance(value, str):
+    return _translate_text(value)
+  return value
+
+
+def _translate_text(value: str) -> str:
+  """Translate display text via the app translation table.
+
+  Falls back to the capitalized form so labels built from lowercase
+  identifiers (e.g. BigButton("toggles")) still match msgid "Toggles".
+  Untranslated strings are returned unchanged, so this is safe to apply
+  to every label in the UI.
+  """
+  if not value or not value[0].isalpha():
+    return value
+  translated = multilang.tr(value)
+  if translated != value:
+    return translated
+  if value[0].islower():
+    return multilang.tr(value[0].upper() + value[1:])
+  return value
 
 
 class ScrollState(IntEnum):
