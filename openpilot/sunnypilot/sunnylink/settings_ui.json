@@ -4,22 +4,22 @@
   "panels": [
     {
       "id": "steering",
-      "label": "Steering",
+      "label": "转向",
       "icon": "steering_wheel",
       "order": 1,
       "remote_configurable": true,
-      "description": "Lateral control, lane changes, and steering behavior",
+      "description": "横向控制、变道与转向行为",
       "sections": [
         {
           "id": "mads",
-          "title": "Modular Assistive Driving System (MADS)",
+          "title": "模块化辅助驾驶系统（MADS）",
           "description": "",
           "items": [
             {
               "key": "Mads",
               "widget": "toggle",
-              "title": "Enable Modular Assistive Driving System (MADS)",
-              "description": "Enable MADS. Disable toggle to revert back to stock sunnypilot engagement/disengagement.",
+              "title": "启用模块化辅助驾驶系统（MADS）",
+              "description": "启用 MADS。关闭此开关将恢复 sunnypilot 原版的启用/解除逻辑。",
               "enablement": [
                 {
                   "type": "offroad_only"
@@ -30,7 +30,7 @@
           "sub_panels": [
             {
               "id": "mads_settings",
-              "label": "MADS Settings",
+              "label": "MADS 设置",
               "trigger_key": "Mads",
               "trigger_condition": {
                 "type": "param",
@@ -41,8 +41,8 @@
                 {
                   "key": "MadsMainCruiseAllowed",
                   "widget": "toggle",
-                  "title": "Toggle with Main Cruise",
-                  "description": "Note: For vehicles without LFA/LKAS button, disabling this will prevent lateral control engagement.",
+                  "title": "跟随主巡航按键",
+                  "description": "注意：没有 LFA/LKAS 按键的车辆，关闭此项将无法启用横向控制。",
                   "enablement": [
                     {
                       "type": "offroad_only"
@@ -83,8 +83,8 @@
                 {
                   "key": "MadsUnifiedEngagementMode",
                   "widget": "toggle",
-                  "title": "Unified Engagement Mode (UEM)",
-                  "description": "Engage lateral and longitudinal control with cruise control engagement. Note: Once lateral control is engaged via UEM, it will remain engaged until it is manually disabled via the MADS button or car shut off.",
+                  "title": "统一启用模式（UEM）",
+                  "description": "启用巡航控制的同时一并启用横向和纵向控制。注意：通过 UEM 启用横向控制后会持续保持，直到用 MADS 按钮手动关闭或车辆熄火。",
                   "enablement": [
                     {
                       "type": "offroad_only"
@@ -125,12 +125,12 @@
                 {
                   "key": "MadsSteeringMode",
                   "widget": "multiple_button",
-                  "title": "Steering Mode on Brake Pedal",
-                  "description": "Choose how Automatic Lane Centering (ALC) behaves after the brake pedal is manually pressed in sunnypilot.",
+                  "title": "踩刹车时的转向模式",
+                  "description": "选择在 sunnypilot 中手动踩下刹车踏板后，自动车道居中（ALC）的表现方式。",
                   "options": [
                     {
                       "value": 0,
-                      "label": "Remain Active",
+                      "label": "保持启用",
                       "enablement": [
                         {
                           "type": "not",
@@ -167,7 +167,7 @@
                     },
                     {
                       "value": 1,
-                      "label": "Pause",
+                      "label": "暂停",
                       "enablement": [
                         {
                           "type": "not",
@@ -204,7 +204,7 @@
                     },
                     {
                       "value": 2,
-                      "label": "Disengage"
+                      "label": "解除"
                     }
                   ],
                   "enablement": [
@@ -219,19 +219,19 @@
         },
         {
           "id": "blinker",
-          "title": "Blinker Control",
-          "description": "Lateral pause behavior during turn signals",
+          "title": "转向灯控制",
+          "description": "打转向灯时的横向暂停行为",
           "items": [
             {
               "key": "BlinkerPauseLateralControl",
               "widget": "toggle",
-              "title": "Pause Lateral Control with Blinker",
-              "description": "Pause lateral control with blinker when traveling below the desired speed selected.",
+              "title": "打灯暂停横向控制",
+              "description": "当车速低于所选数值时，打转向灯会暂停横向控制。",
               "sub_items": [
                 {
                   "key": "BlinkerMinLateralControlSpeed",
                   "widget": "option",
-                  "title": "Minimum Speed to Pause Lateral Control",
+                  "title": "暂停横向控制的最低车速",
                   "min": 0,
                   "max": 255,
                   "step": 5,
@@ -250,8 +250,8 @@
                 {
                   "key": "BlinkerLateralReengageDelay",
                   "widget": "option",
-                  "title": "Post-Blinker Delay",
-                  "description": "Delay before lateral control resumes after the turn signal ends.",
+                  "title": "转向灯结束后的延迟",
+                  "description": "转向灯结束后，横向控制恢复前的延迟。",
                   "min": 0,
                   "max": 10,
                   "step": 1,
@@ -270,8 +270,8 @@
         },
         {
           "id": "torque",
-          "title": "Torque Control",
-          "description": "Steering torque tuning and lateral control method",
+          "title": "扭矩控制",
+          "description": "转向扭矩调校与横向控制方式",
           "enablement": [
             {
               "type": "capability",
@@ -283,8 +283,8 @@
             {
               "key": "EnforceTorqueControl",
               "widget": "toggle",
-              "title": "Enforce Torque Lateral Control",
-              "description": "Enable this to enforce sunnypilot to steer with Torque lateral control.",
+              "title": "强制扭矩横向控制",
+              "description": "启用后将强制 sunnypilot 使用扭矩横向控制。",
               "visibility": [
                 {
                   "type": "not",
@@ -315,7 +315,7 @@
           "sub_panels": [
             {
               "id": "torque_settings",
-              "label": "Torque Settings",
+              "label": "扭矩设置",
               "trigger_key": "EnforceTorqueControl",
               "trigger_condition": {
                 "type": "param",
@@ -326,8 +326,8 @@
                 {
                   "key": "LateralJerkTorqueController",
                   "widget": "toggle",
-                  "title": "Lateral Jerk Torque Controller",
-                  "description": "Looks ahead at planned steering to reduce sudden corrections, so the wheel moves more smoothly through turns. Works with Self-Tune and custom tuning. Thanks to @twilsonco for the implementation.",
+                  "title": "横向冲击抑制扭矩控制器",
+                  "description": "参考已规划的转向提前动作，减少突然修正，让过弯时方向盘更平顺。可与自整定和自定义调校配合使用。该实现感谢 @twilsonco。",
                   "visibility": [
                     {
                       "type": "not",
@@ -352,8 +352,8 @@
                 {
                   "key": "LiveTorqueParamsToggle",
                   "widget": "toggle",
-                  "title": "Self-Tune",
-                  "description": "Enables self-tune for Torque lateral control for platforms that do not use Torque lateral control by default.",
+                  "title": "自整定",
+                  "description": "为默认不使用扭矩横向控制的车型开启自整定。",
                   "enablement": [
                     {
                       "type": "offroad_only"
@@ -363,8 +363,8 @@
                 {
                   "key": "LiveTorqueParamsRelaxedToggle",
                   "widget": "toggle",
-                  "title": "Less Restrict Settings for Self-Tune (Beta)",
-                  "description": "Less strict settings when using Self-Tune. This allows torqued to be more forgiving when learning values.",
+                  "title": "放宽自整定限制（测试版）",
+                  "description": "使用自整定时放宽判定条件，让扭矩学习数值时更宽容。",
                   "enablement": [
                     {
                       "type": "offroad_only"
@@ -379,8 +379,8 @@
                 {
                   "key": "CustomTorqueParams",
                   "widget": "toggle",
-                  "title": "Enable Custom Tuning",
-                  "description": "Enables custom tuning for Torque lateral control. Modifying Lateral Acceleration Factor and Friction below will override the offline values indicated in the YAML files within \"opendbc/car/torque_data\". The values will also be used live when \"Manual Real-Time Tuning\" toggle is enabled.",
+                  "title": "启用自定义调校",
+                  "description": "启用扭矩横向控制的自定义调校。修改下方的横向加速度系数与摩擦系数，将覆盖 \"opendbc/car/torque_data\" 中 YAML 文件给出的离线数值；打开「手动实时调校」后，这些数值也会实时生效。",
                   "enablement": [
                     {
                       "type": "offroad_only"
@@ -390,8 +390,8 @@
                 {
                   "key": "TorqueParamsOverrideEnabled",
                   "widget": "toggle",
-                  "title": "Manual Real-Time Tuning",
-                  "description": "Enforces the torque lateral controller to use the fixed values instead of the learned values from Self-Tune. Enabling this toggle overrides Self-Tune values.",
+                  "title": "手动实时调校",
+                  "description": "强制扭矩横向控制器使用固定值，而不是自整定学习到的值。启用后将覆盖自整定数值。",
                   "enablement": [
                     {
                       "type": "offroad_only"
@@ -406,7 +406,7 @@
                 {
                   "key": "TorqueParamsOverrideLatAccelFactor",
                   "widget": "option",
-                  "title": "Lateral Acceleration Factor",
+                  "title": "横向加速度系数",
                   "title_param_suffix": {
                     "param": "TorqueParamsOverrideEnabled",
                     "values": {
@@ -417,7 +417,7 @@
                   "min": 0.1,
                   "max": 5.0,
                   "step": 0.1,
-                  "unit": "m/s\u00b2",
+                  "unit": "m/s²",
                   "enablement": [
                     {
                       "type": "param",
@@ -442,7 +442,7 @@
                 {
                   "key": "TorqueParamsOverrideFriction",
                   "widget": "option",
-                  "title": "Friction",
+                  "title": "摩擦系数",
                   "title_param_suffix": {
                     "param": "TorqueParamsOverrideEnabled",
                     "values": {
@@ -477,12 +477,12 @@
                 {
                   "key": "TorqueControlTune",
                   "widget": "multiple_button",
-                  "title": "Torque Control Tune Version",
-                  "description": "Select the version of Torque Control Tune to use.",
+                  "title": "扭矩控制调校版本",
+                  "description": "选择要使用的扭矩控制调校版本。",
                   "options": [
                     {
                       "value": "",
-                      "label": "Default"
+                      "label": "默认"
                     },
                     {
                       "value": 1.0,
@@ -505,57 +505,57 @@
         },
         {
           "id": "lane_change",
-          "title": "Lane Change",
-          "description": "Automatic lane change timing and behavior",
+          "title": "变道",
+          "description": "自动变道的时机与行为",
           "items": [
             {
               "key": "AutoLaneChangeTimer",
               "widget": "option",
-              "title": "Auto Lane Change by Blinker",
-              "description": "Set a timer to delay the auto lane change operation when the blinker is used. No nudge on the steering wheel is required to auto lane change if a timer is set. Default is Nudge.",
+              "title": "拨杆自动变道",
+              "description": "设置打灯后进行自动变道的延时。设定延时后无需轻推方向盘即可自动变道。默认为「轻推方向盘」。",
               "details": "Please use caution when using this feature. Only use the blinker when traffic and road conditions permit.",
               "options": [
                 {
                   "value": -1,
-                  "label": "Off"
+                  "label": "关闭"
                 },
                 {
                   "value": 0,
-                  "label": "Nudge"
+                  "label": "轻推方向盘"
                 },
                 {
                   "value": 1,
-                  "label": "Nudgeless"
+                  "label": "免轻推"
                 },
                 {
                   "value": 2,
-                  "label": "0.5 second"
+                  "label": "0.5 秒"
                 },
                 {
                   "value": 3,
-                  "label": "1 second"
+                  "label": "1 秒"
                 },
                 {
                   "value": 4,
-                  "label": "2 seconds"
+                  "label": "2 秒"
                 },
                 {
                   "value": 5,
-                  "label": "3 seconds"
+                  "label": "3 秒"
                 }
               ]
             },
             {
               "key": "RoadEdgeLaneChangeEnabled",
               "widget": "toggle",
-              "title": "Block Lane Change: Road Edge Detection",
-              "description": "Blocks lane change when the model sees a road edge on the side you signal."
+              "title": "阻止变道：路沿检测",
+              "description": "当模型检测到打灯一侧有路沿时，阻止变道。"
             },
             {
               "key": "AutoLaneChangeBsmDelay",
               "widget": "toggle",
-              "title": "Auto Lane Change: Delay with Blind Spot",
-              "description": "Toggle to enable a delay timer for lane changes when blind spot monitoring (BSM) detects a vehicle in your blind spot.",
+              "title": "自动变道：盲区延时",
+              "description": "开启后，当盲区监测（BSM）检测到盲区有车时，会延时执行变道。",
               "enablement": [
                 {
                   "type": "capability",
@@ -576,11 +576,11 @@
     },
     {
       "id": "cruise",
-      "label": "Cruise",
+      "label": "巡航",
       "icon": "cruise_control",
       "order": 2,
       "remote_configurable": true,
-      "description": "Longitudinal control, speed limits, and cruise behavior",
+      "description": "纵向控制、限速与巡航行为",
       "sections": [
         {
           "id": "core_cruise_features",
@@ -590,7 +590,7 @@
             {
               "key": "ExperimentalMode",
               "widget": "toggle",
-              "title": "Experimental Mode",
+              "title": "实验模式",
               "enablement": [
                 {
                   "type": "capability",
@@ -602,8 +602,8 @@
             {
               "key": "DynamicExperimentalControl",
               "widget": "toggle",
-              "title": "Dynamic Experimental Control",
-              "description": "Let the model decide when to use sunnypilot ACC or sunnypilot End to End Longitudinal.",
+              "title": "动态实验模式控制",
+              "description": "由模型决定使用 sunnypilot ACC 还是端到端纵向控制。",
               "visibility": [
                 {
                   "type": "capability",
@@ -622,26 +622,26 @@
             {
               "key": "DisengageOnAccelerator",
               "widget": "toggle",
-              "title": "Disengage Cruise on Accelerator Pedal",
-              "description": "When enabled, pressing the accelerator pedal will disengage longitudinal control."
+              "title": "踩油门解除巡航",
+              "description": "启用后，踩下油门踏板会解除纵向控制。"
             },
             {
               "key": "LongitudinalPersonality",
               "widget": "multiple_button",
-              "title": "Driving Personality",
-              "description": "Standard is recommended. In aggressive mode, sunnypilot will follow lead cars closer and be more aggressive with the gas and brake. In relaxed mode sunnypilot will stay further away from lead cars. On supported cars, you can cycle through these personalities with your steering wheel distance button.",
+              "title": "驾驶风格",
+              "description": "推荐使用标准模式。激进模式会跟车更近、油门刹车更积极；舒缓模式会与前车保持更远距离。在支持的车型上，可用方向盘上的车距按键循环切换这些驾驶风格。",
               "options": [
                 {
                   "value": 0,
-                  "label": "Aggressive"
+                  "label": "激进"
                 },
                 {
                   "value": 1,
-                  "label": "Standard"
+                  "label": "标准"
                 },
                 {
                   "value": 2,
-                  "label": "Relaxed"
+                  "label": "舒缓"
                 }
               ],
               "enablement": [
@@ -655,7 +655,7 @@
             {
               "key": "IntelligentCruiseButtonManagement",
               "widget": "toggle",
-              "title": "Intelligent Cruise Button Management (ICBM) (Alpha)",
+              "title": "智能巡航按键管理（ICBM）（Alpha）",
               "visibility": [
                 {
                   "type": "capability",
@@ -681,7 +681,7 @@
         },
         {
           "id": "custom_acc_increments",
-          "title": "Custom ACC Speed Intervals",
+          "title": "自定义 ACC 车速间隔",
           "description": "",
           "enablement": [
             {
@@ -720,7 +720,7 @@
             {
               "key": "CustomAccIncrementsEnabled",
               "widget": "toggle",
-              "title": "Enable Custom ACC Speed Intervals",
+              "title": "启用自定义 ACC 车速间隔",
               "enablement": [
                 {
                   "type": "offroad_only"
@@ -759,7 +759,7 @@
           "sub_panels": [
             {
               "id": "custom_acc_intervals",
-              "label": "Custom ACC Speed Intervals Settings",
+              "label": "自定义 ACC 车速间隔设置",
               "trigger_key": "CustomAccIncrementsEnabled",
               "trigger_condition": {
                 "type": "param",
@@ -770,7 +770,7 @@
                 {
                   "key": "CustomAccShortPressIncrement",
                   "widget": "option",
-                  "title": "Short Press Increment",
+                  "title": "短按增量",
                   "min": 1,
                   "max": 10,
                   "step": 1,
@@ -785,7 +785,7 @@
                 {
                   "key": "CustomAccLongPressIncrement",
                   "widget": "option",
-                  "title": "Long Press Increment",
+                  "title": "长按增量",
                   "min": 1,
                   "max": 10,
                   "step": 1,
@@ -803,35 +803,35 @@
         },
         {
           "id": "speed_limits",
-          "title": "Speed Limits",
-          "description": "Speed limit detection and offset behavior",
+          "title": "限速",
+          "description": "限速识别与偏移行为",
           "items": [],
           "sub_panels": [
             {
               "id": "speed_limit_settings",
-              "label": "Speed Limit Settings",
+              "label": "限速设置",
               "trigger_key": "SpeedLimitMode",
               "items": [
                 {
                   "key": "SpeedLimitMode",
                   "widget": "multiple_button",
-                  "title": "Speed Limit Assist Mode",
+                  "title": "限速辅助模式",
                   "options": [
                     {
                       "value": 0,
-                      "label": "Off"
+                      "label": "关闭"
                     },
                     {
                       "value": 1,
-                      "label": "Information"
+                      "label": "信息"
                     },
                     {
                       "value": 2,
-                      "label": "Warning"
+                      "label": "警告"
                     },
                     {
                       "value": 3,
-                      "label": "Assist",
+                      "label": "辅助",
                       "enablement": [
                         {
                           "type": "any",
@@ -881,53 +881,53 @@
                 {
                   "key": "SpeedLimitPolicy",
                   "widget": "multiple_button",
-                  "title": "Speed Limit Source",
+                  "title": "限速来源",
                   "options": [
                     {
                       "value": 0,
-                      "label": "Car State Only"
+                      "label": "仅看车辆状态"
                     },
                     {
                       "value": 1,
-                      "label": "Map Data Only"
+                      "label": "仅地图数据"
                     },
                     {
                       "value": 2,
-                      "label": "Car State Priority"
+                      "label": "车辆状态优先"
                     },
                     {
                       "value": 3,
-                      "label": "Map Data Priority"
+                      "label": "地图数据优先"
                     },
                     {
                       "value": 4,
-                      "label": "Combined"
+                      "label": "组合"
                     }
                   ]
                 },
                 {
                   "key": "SpeedLimitOffsetType",
                   "widget": "multiple_button",
-                  "title": "Speed Limit Offset Type",
+                  "title": "限速偏移方式",
                   "options": [
                     {
                       "value": 0,
-                      "label": "Off"
+                      "label": "关闭"
                     },
                     {
                       "value": 1,
-                      "label": "Fixed"
+                      "label": "固定值"
                     },
                     {
                       "value": 2,
-                      "label": "Percentage"
+                      "label": "百分比"
                     }
                   ]
                 },
                 {
                   "key": "SpeedLimitValueOffset",
                   "widget": "option",
-                  "title": "Speed Limit Offset Value",
+                  "title": "限速偏移值",
                   "min": -30,
                   "max": 30,
                   "step": 1,
@@ -950,7 +950,7 @@
         },
         {
           "id": "smart_cruise",
-          "title": "Smart Cruise Control",
+          "title": "智能巡航控制",
           "description": "",
           "enablement": [
             {
@@ -973,8 +973,8 @@
             {
               "key": "SmartCruiseControlVision",
               "widget": "toggle",
-              "title": "Vision",
-              "description": "Use vision path predictions to estimate the appropriate speed to drive through turns ahead.",
+              "title": "视觉",
+              "description": "使用视觉路径预测估算前方弯道的合适通过车速。",
               "visibility": [
                 {
                   "type": "any",
@@ -1013,8 +1013,8 @@
             {
               "key": "SmartCruiseControlMap",
               "widget": "toggle",
-              "title": "Map",
-              "description": "Use map data to estimate the appropriate speed to drive through turns ahead.",
+              "title": "地图",
+              "description": "使用地图数据估算前方弯道的合适通过车速。",
               "visibility": [
                 {
                   "type": "any",
@@ -1056,33 +1056,33 @@
     },
     {
       "id": "display",
-      "label": "Display",
+      "label": "显示",
       "icon": "display",
       "order": 3,
       "remote_configurable": true,
-      "description": "Screen brightness, timeout, and interactivity settings",
+      "description": "屏幕亮度、超时与交互设置",
       "sections": [
         {
           "id": "brightness_timeout",
-          "title": "Brightness & Timeout",
-          "description": "Screen dimming and sleep behavior while driving",
+          "title": "亮度与超时",
+          "description": "行车中的屏幕调暗与休眠行为",
           "items": [
             {
               "key": "OnroadScreenOffBrightness",
               "widget": "multiple_button",
-              "title": "Onroad Brightness",
+              "title": "行车中亮度",
               "options": [
                 {
                   "value": 0,
-                  "label": "Auto (Default)"
+                  "label": "自动（默认）"
                 },
                 {
                   "value": 1,
-                  "label": "Auto (Dark)"
+                  "label": "自动（暗）"
                 },
                 {
                   "value": 2,
-                  "label": "Screen Off"
+                  "label": "关闭屏幕"
                 },
                 {
                   "value": 3,
@@ -1169,47 +1169,47 @@
             {
               "key": "OnroadScreenOffTimer",
               "widget": "multiple_button",
-              "title": "Onroad Brightness Delay",
+              "title": "行车中亮度调节延迟",
               "options": [
                 {
                   "value": 0,
-                  "label": "Always On"
+                  "label": "始终开启"
                 },
                 {
                   "value": 3,
-                  "label": "3s"
+                  "label": "3 秒"
                 },
                 {
                   "value": 5,
-                  "label": "5s"
+                  "label": "5 秒"
                 },
                 {
                   "value": 10,
-                  "label": "10s"
+                  "label": "10 秒"
                 },
                 {
                   "value": 15,
-                  "label": "15s"
+                  "label": "15 秒"
                 },
                 {
                   "value": 30,
-                  "label": "30s"
+                  "label": "30 秒"
                 },
                 {
                   "value": 60,
-                  "label": "1m"
+                  "label": "1 米"
                 },
                 {
                   "value": 180,
-                  "label": "3m"
+                  "label": "3 米"
                 },
                 {
                   "value": 300,
-                  "label": "5m"
+                  "label": "5 米"
                 },
                 {
                   "value": 600,
-                  "label": "10m"
+                  "label": "10 分钟"
                 }
               ],
               "enablement": [
@@ -1236,114 +1236,114 @@
             {
               "key": "InteractivityTimeout",
               "widget": "multiple_button",
-              "title": "Interactivity Timeout",
-              "description": "Apply a custom timeout for settings UI. This is the time after which settings UI closes automatically if user is not interacting with the screen.",
+              "title": "交互超时",
+              "description": "为设置界面设置超时时间：超过该时间且用户未操作屏幕时，设置界面会自动关闭。",
               "options": [
                 {
                   "value": 0,
-                  "label": "Default"
+                  "label": "默认"
                 },
                 {
                   "value": 10,
-                  "label": "10 s"
+                  "label": "10 秒"
                 },
                 {
                   "value": 20,
-                  "label": "20 s"
+                  "label": "20 秒"
                 },
                 {
                   "value": 30,
-                  "label": "30 s"
+                  "label": "30 秒"
                 },
                 {
                   "value": 40,
-                  "label": "40 s"
+                  "label": "40 秒"
                 },
                 {
                   "value": 50,
-                  "label": "50 s"
+                  "label": "50 秒"
                 },
                 {
                   "value": 60,
-                  "label": "1 m"
+                  "label": "1 米"
                 },
                 {
                   "value": 70,
-                  "label": "1 m"
+                  "label": "1 米"
                 },
                 {
                   "value": 80,
-                  "label": "1 m"
+                  "label": "1 米"
                 },
                 {
                   "value": 90,
-                  "label": "1 m"
+                  "label": "1 米"
                 },
                 {
                   "value": 100,
-                  "label": "1 m"
+                  "label": "1 米"
                 },
                 {
                   "value": 110,
-                  "label": "1 m"
+                  "label": "1 米"
                 },
                 {
                   "value": 120,
-                  "label": "2 m"
+                  "label": "2 米"
                 }
               ]
             },
             {
               "key": "ScreenSaverEnabled",
               "widget": "toggle",
-              "title": "Screen Saver",
-              "description": "Show a screen saver when the device is offroad and idle, instead of turning the screen off."
+              "title": "屏幕保护",
+              "description": "设备离线且空闲时显示屏幕保护，而不是直接熄屏。"
             },
             {
               "key": "ScreenSaverTimeout",
               "widget": "multiple_button",
-              "title": "Screen Saver Duration",
-              "description": "How long the screen saver runs before the screen turns off.",
+              "title": "屏幕保护时长",
+              "description": "屏幕保护运行多久之后关闭屏幕。",
               "options": [
                 {
                   "value": 60,
-                  "label": "1 m"
+                  "label": "1 米"
                 },
                 {
                   "value": 120,
-                  "label": "2 m"
+                  "label": "2 米"
                 },
                 {
                   "value": 180,
-                  "label": "3 m"
+                  "label": "3 米"
                 },
                 {
                   "value": 240,
-                  "label": "4 m"
+                  "label": "4 米"
                 },
                 {
                   "value": 300,
-                  "label": "5 m"
+                  "label": "5 米"
                 },
                 {
                   "value": 360,
-                  "label": "6 m"
+                  "label": "6 米"
                 },
                 {
                   "value": 420,
-                  "label": "7 m"
+                  "label": "7 米"
                 },
                 {
                   "value": 480,
-                  "label": "8 m"
+                  "label": "8 米"
                 },
                 {
                   "value": 540,
-                  "label": "9 m"
+                  "label": "9 米"
                 },
                 {
                   "value": 600,
-                  "label": "10 m"
+                  "label": "10 米"
                 }
               ],
               "enablement": [
@@ -1360,40 +1360,40 @@
     },
     {
       "id": "visuals",
-      "label": "Visuals",
+      "label": "视觉效果",
       "icon": "visuals",
       "order": 4,
       "remote_configurable": true,
-      "description": "HUD overlays, alerts, and on-screen display elements",
+      "description": "抬头显示叠加层、提醒与屏幕显示元素",
       "sections": [
         {
           "id": "hud_elements",
-          "title": "HUD Elements",
-          "description": "Overlays shown on the driving screen",
+          "title": "抬头显示元素",
+          "description": "驾驶界面上的叠加显示",
           "items": [
             {
               "key": "BlindSpot",
               "widget": "toggle",
-              "title": "Show Blind Spot Warnings",
-              "description": "Enabling this will display warnings when a vehicle is detected in your blind spot as long as your car has BSM supported."
+              "title": "显示盲区警告",
+              "description": "在车辆支持盲区监测（BSM）的前提下，启用后检测到盲区有车会发出警告。"
             },
             {
               "key": "TorqueBar",
               "widget": "toggle",
-              "title": "Steering Arc",
-              "description": "Display steering arc on the driving screen when lateral control is enabled."
+              "title": "转向弧线",
+              "description": "启用横向控制时，在驾驶界面显示转向弧线。"
             },
             {
               "key": "ShowTurnSignals",
               "widget": "toggle",
-              "title": "Display Turn Signals",
-              "description": "When enabled, visual turn indicators are drawn on the HUD."
+              "title": "显示转向指示",
+              "description": "启用后，抬头显示上会绘制转向指示箭头。"
             },
             {
               "key": "RoadNameToggle",
               "widget": "toggle",
-              "title": "Display Road Name",
-              "description": "Displays the name of the road the car is traveling on. The OpenStreetMap database of the location must be downloaded to fetch the road name.",
+              "title": "显示道路名称",
+              "description": "显示当前行驶道路的名称。需要先下载该地区的 OpenStreetMap 数据库才能获取道路名。",
               "visibility": [
                 {
                   "type": "not",
@@ -1408,8 +1408,8 @@
             {
               "key": "StandstillTimer",
               "widget": "toggle",
-              "title": "Standstill Timer",
-              "description": "Show a timer on the HUD when the car is at a standstill.",
+              "title": "停车计时器",
+              "description": "车辆静止时在抬头显示上显示计时器。",
               "visibility": [
                 {
                   "type": "not",
@@ -1424,8 +1424,8 @@
             {
               "key": "RocketFuel",
               "widget": "toggle",
-              "title": "Real-time Acceleration Bar",
-              "description": "Show an indicator on the left side of the screen to display real-time vehicle acceleration and deceleration. This displays what the car is currently doing, not what the planner is requesting.",
+              "title": "实时加速度条",
+              "description": "在屏幕左侧显示实时的加速/减速指示器。它反映的是车辆当前的真实动作，而不是规划器的请求值。",
               "visibility": [
                 {
                   "type": "not",
@@ -1440,27 +1440,27 @@
             {
               "key": "ChevronInfo",
               "widget": "option",
-              "title": "Display Metrics Below Chevron",
+              "title": "在车标下方显示指标",
               "options": [
                 {
                   "value": 0,
-                  "label": "Off"
+                  "label": "关闭"
                 },
                 {
                   "value": 1,
-                  "label": "Distance"
+                  "label": "距离"
                 },
                 {
                   "value": 2,
-                  "label": "Speed"
+                  "label": "速度"
                 },
                 {
                   "value": 3,
-                  "label": "Time"
+                  "label": "时间"
                 },
                 {
                   "value": 4,
-                  "label": "All"
+                  "label": "全部"
                 }
               ],
               "visibility": [
@@ -1485,8 +1485,8 @@
         },
         {
           "id": "developer_ui",
-          "title": "Developer UI Info",
-          "description": "Speedometer and debug display options",
+          "title": "开发者界面信息",
+          "description": "车速表与调试显示选项",
           "visibility": [
             {
               "type": "not",
@@ -1501,63 +1501,63 @@
             {
               "key": "DevUIInfo",
               "widget": "option",
-              "title": "Developer UI",
-              "description": "Display real-time parameters and metrics from various sources.",
+              "title": "开发者界面",
+              "description": "显示来自各路源的实时参数与指标。",
               "options": [
                 {
                   "value": 0,
-                  "label": "Off"
+                  "label": "关闭"
                 },
                 {
                   "value": 1,
-                  "label": "Bottom"
+                  "label": "底部"
                 },
                 {
                   "value": 2,
-                  "label": "Right"
+                  "label": "右侧"
                 },
                 {
                   "value": 3,
-                  "label": "Right & Bottom"
+                  "label": "右侧 + 底部"
                 }
               ]
             },
             {
               "key": "TrueVEgoUI",
               "widget": "toggle",
-              "title": "Speedometer: Always Display True Speed",
-              "description": "For applicable vehicles, always display the true vehicle current speed from wheel speed sensors."
+              "title": "车速表：始终显示真实车速",
+              "description": "对适用车型，始终显示来自轮速传感器的真实车速。"
             },
             {
               "key": "HideVEgoUI",
               "widget": "toggle",
-              "title": "Speedometer: Hide from Onroad Screen",
-              "description": "When enabled, the speedometer on the onroad screen is not displayed."
+              "title": "车速表：行车界面不显示",
+              "description": "启用后，行车界面不再显示车速表。"
             }
           ]
         },
         {
           "id": "alerts_extras",
-          "title": "Alerts & Extras",
-          "description": "Traffic light alerts and visual flair",
+          "title": "提醒与附加功能",
+          "description": "红绿灯提醒与视觉效果",
           "items": [
             {
               "key": "GreenLightAlert",
               "widget": "toggle",
-              "title": "Green Traffic Light Alert (Beta)",
-              "description": "A chime and on-screen alert will play when the traffic light you are waiting for turns green and you have no vehicle in front of you. On-screen visual alert is only available on comma 3X. Note: This chime is only designed as a notification. It is the driver's responsibility to observe their environment and make decisions accordingly."
+              "title": "绿灯提醒（测试版）",
+              "description": "当你在红灯前等待，且前方没有车辆时，所在车道绿灯亮起会发出提示音和屏幕提醒。屏幕视觉提醒仅 comma 3X 支持。注意：该提示音仅作为通知，驾驶员仍需自行观察环境并做出判断。"
             },
             {
               "key": "LeadDepartAlert",
               "widget": "toggle",
-              "title": "Lead Departure Alert (Beta)",
-              "description": "A chime and on-screen alert will play when you are stopped, and the vehicle in front of you start moving. On-screen visual alert is only available on comma 3X. Note: This chime is only designed as a notification. It is the driver's responsibility to observe their environment and make decisions accordingly."
+              "title": "前车起步提醒（测试版）",
+              "description": "当你停车等待，前车开始移动时会发出提示音和屏幕提醒。屏幕视觉提醒仅 comma 3X 支持。注意：该提示音仅作为通知，驾驶员仍需自行观察环境并做出判断。"
             },
             {
               "key": "RainbowMode",
               "widget": "toggle",
-              "title": "Tesla Rainbow Mode",
-              "description": "Display a rainbow effect on the path the model wants to take. It does not affect driving in any way."
+              "title": "特斯拉彩虹路径",
+              "description": "在模型规划的行车路径上显示彩虹效果，不会对驾驶产生任何影响。"
             }
           ]
         }
@@ -1565,11 +1565,11 @@
     },
     {
       "id": "toggles",
-      "label": "Toggles",
+      "label": "功能开关",
       "icon": "toggles",
       "order": 5,
       "remote_configurable": true,
-      "description": "Core openpilot feature toggles",
+      "description": "openpilot 核心功能开关",
       "sections": [
         {
           "id": "core_toggles",
@@ -1580,8 +1580,8 @@
               "key": "OpenpilotEnabledToggle",
               "widget": "toggle",
               "needs_onroad_cycle": true,
-              "title": "Enable sunnypilot",
-              "description": "Use the sunnypilot system for adaptive cruise control and lane keep driver assistance. Your attention is required at all times to use this feature.",
+              "title": "启用 sunnypilot",
+              "description": "使用 sunnypilot 的自适应巡航与车道保持辅助功能。使用此功能时必须始终保持注意力。",
               "enablement": [
                 {
                   "type": "offroad_only"
@@ -1591,41 +1591,41 @@
             {
               "key": "IsLdwEnabled",
               "widget": "toggle",
-              "title": "Enable Lane Departure Warnings",
-              "description": "Receive alerts to steer back into the lane when your vehicle drifts over a detected lane line without a turn signal activated while driving over 31 mph (50 km/h)."
+              "title": "启用车道偏离警告",
+              "description": "当车速超过 31 mph（50 km/h）、未打转向灯却压过车道线时，会收到提醒你回到车道的警报。"
             },
             {
               "key": "AlwaysOnDM",
               "widget": "toggle",
-              "title": "Always-On Driver Monitoring",
-              "description": "Enable driver monitoring even when sunnypilot is not engaged."
+              "title": "常开驾驶员监控",
+              "description": "即使未启用 sunnypilot，也保持驾驶员监控。"
             },
             {
               "key": "IsMetric",
               "widget": "toggle",
-              "title": "Use Metric System",
-              "description": "Display speed in km/h instead of mph."
+              "title": "使用公制单位",
+              "description": "用 km/h（公里/小时）代替 mph（英里/小时）显示车速。"
             }
           ]
         },
         {
           "id": "recording",
-          "title": "Recording",
-          "description": "Camera and audio recording during drives",
+          "title": "录制",
+          "description": "行车过程中的摄像头与音频录制",
           "items": [
             {
               "key": "RecordFront",
               "widget": "toggle",
               "needs_onroad_cycle": true,
-              "title": "Record and Upload Driver Camera",
-              "description": "Upload data from the driver facing camera and help improve the driver monitoring algorithm."
+              "title": "录制并上传驾驶员摄像头",
+              "description": "上传面向驾驶员的摄像头数据，帮助改进驾驶员监控算法。"
             },
             {
               "key": "RecordAudio",
               "widget": "toggle",
               "needs_onroad_cycle": true,
-              "title": "Record and Upload Microphone Audio",
-              "description": "Record and store microphone audio while driving. The audio will be included in the dashcam video in comma connect."
+              "title": "录制并上传麦克风音频",
+              "description": "行车时录制并保存麦克风音频，该音频会一并包含在 comma connect 的行车记录视频中。"
             }
           ]
         }
@@ -1633,101 +1633,101 @@
     },
     {
       "id": "device",
-      "label": "Device",
+      "label": "设备",
       "icon": "device",
       "order": 6,
       "remote_configurable": true,
-      "description": "Device behavior, units, and recording settings",
+      "description": "设备行为、单位与录制设置",
       "sections": [
         {
           "id": "general",
-          "title": "General",
-          "description": "Power, boot, and unit preferences",
+          "title": "通用",
+          "description": "电源、开机与单位偏好",
           "items": [
             {
               "key": "OffroadMode",
               "widget": "toggle",
-              "title": "Force Offroad Mode"
+              "title": "强制离线模式"
             },
             {
               "key": "DeviceBootMode",
               "widget": "option",
-              "title": "Wake Up Behavior",
-              "description": "Controls state of the device after boot/sleep. Default: Device will boot/wake-up normally and will be ready to engage. Offroad: Device will be in Always Offroad mode after boot/wake-up.",
+              "title": "唤醒行为",
+              "description": "控制设备开机/唤醒后的状态。默认：正常开机/唤醒，随时可以启用。离线：开机/唤醒后进入「始终离线」模式。",
               "options": [
                 {
                   "value": 0,
-                  "label": "Standard"
+                  "label": "标准"
                 },
                 {
                   "value": 1,
-                  "label": "Always Offroad"
+                  "label": "始终离线"
                 }
               ]
             },
             {
               "key": "QuietMode",
               "widget": "toggle",
-              "title": "Quiet Mode"
+              "title": "静音模式"
             },
             {
               "key": "OnroadUploads",
               "widget": "toggle",
-              "title": "Onroad Uploads"
+              "title": "行车数据上传"
             },
             {
               "key": "MaxTimeOffroad",
               "widget": "option",
-              "title": "Max Time Offroad",
-              "description": "Device will automatically shutdown after set time once the engine is turned off. 30h is the default.",
+              "title": "最长离线时长",
+              "description": "发动机熄火后，设备会在设定时间自动关机。默认为 30 小时。",
               "options": [
                 {
                   "value": 0,
-                  "label": "Always On"
+                  "label": "始终开启"
                 },
                 {
                   "value": 5,
-                  "label": "5m"
+                  "label": "5 米"
                 },
                 {
                   "value": 10,
-                  "label": "10m"
+                  "label": "10 分钟"
                 },
                 {
                   "value": 15,
-                  "label": "15m"
+                  "label": "15 分钟"
                 },
                 {
                   "value": 30,
-                  "label": "30m"
+                  "label": "30 分钟"
                 },
                 {
                   "value": 60,
-                  "label": "1h"
+                  "label": "1 小时"
                 },
                 {
                   "value": 120,
-                  "label": "2h"
+                  "label": "2 小时"
                 },
                 {
                   "value": 180,
-                  "label": "3h"
+                  "label": "3 小时"
                 },
                 {
                   "value": 300,
-                  "label": "5h"
+                  "label": "5 小时"
                 },
                 {
                   "value": 600,
-                  "label": "10h"
+                  "label": "10 小时"
                 },
                 {
                   "value": 1440,
-                  "label": "24h"
+                  "label": "24 小时"
                 },
                 {
                   "value": 1800,
-                  "label": "30h (Default)"
+                  "label": "30 小时（默认）"
                 }
               ]
             }
@@ -1735,12 +1735,12 @@
         },
         {
           "id": "language",
-          "title": "Language",
+          "title": "语言",
           "items": [
             {
               "key": "LanguageSetting",
               "widget": "info",
-              "title": "Language"
+              "title": "语言"
             }
           ]
         }
@@ -1748,22 +1748,22 @@
     },
     {
       "id": "software",
-      "label": "Software",
+      "label": "软件",
       "icon": "software",
       "order": 7,
       "remote_configurable": true,
-      "description": "Software update preferences",
+      "description": "软件更新偏好",
       "sections": [
         {
           "id": "updates",
-          "title": "Updates",
-          "description": "Control software updates",
+          "title": "更新",
+          "description": "控制软件更新",
           "items": [
             {
               "key": "DisableUpdates",
               "widget": "toggle",
-              "title": "Disable Updates",
-              "description": "When enabled, software updates will be off. This requires a reboot to take effect.",
+              "title": "禁用更新",
+              "description": "启用后将关闭软件更新，需要重启才会生效。",
               "enablement": [
                 {
                   "type": "offroad_only"
@@ -1781,23 +1781,23 @@
     },
     {
       "id": "developer",
-      "label": "Developer",
+      "label": "开发者",
       "icon": "developer",
       "order": 9,
       "remote_configurable": true,
-      "description": "Debug tools, remote access, and advanced services",
+      "description": "调试工具、远程访问与高级服务",
       "sections": [
         {
           "id": "connectivity",
-          "title": "Connectivity",
-          "description": "Remote access and debugging interfaces",
+          "title": "连接",
+          "description": "远程访问与调试接口",
           "items": [
             {
               "key": "AdbEnabled",
               "widget": "toggle",
               "blocked": true,
-              "title": "Enable ADB",
-              "description": "ADB (Android Debug Bridge) allows connecting to your device over USB or over the network. See https://docs.comma.ai/how-to/connect-to-comma for more info.",
+              "title": "启用 ADB",
+              "description": "ADB（安卓调试桥）可以通过 USB 或网络连接到你的设备。详见 https://docs.comma.ai/how-to/connect-to-comma",
               "enablement": [
                 {
                   "type": "offroad_only"
@@ -1808,12 +1808,12 @@
               "key": "SshEnabled",
               "widget": "toggle",
               "blocked": true,
-              "title": "Enable SSH"
+              "title": "启用 SSH"
             },
             {
               "key": "JoystickDebugMode",
               "widget": "toggle",
-              "title": "Joystick Debug Mode",
+              "title": "游戏手柄调试模式",
               "enablement": [
                 {
                   "type": "offroad_only"
@@ -1824,8 +1824,8 @@
               "key": "AlphaLongitudinalEnabled",
               "widget": "toggle",
               "needs_onroad_cycle": true,
-              "title": "sunnypilot Longitudinal Control (Alpha)",
-              "description": "WARNING: sunnypilot longitudinal control is in alpha for this car and will disable Automatic Emergency Braking (AEB). On this car, sunnypilot defaults to the car's built-in ACC instead of sunnypilot's longitudinal control. Enable this to switch to sunnypilot longitudinal control. Enabling Experimental mode is recommended when enabling sunnypilot longitudinal control alpha. Changing this setting will restart sunnypilot if the car is powered on.",
+              "title": "sunnypilot 纵向控制（Alpha）",
+              "description": "警告：本车的 sunnypilot 纵向控制处于 alpha 阶段，会禁用自动紧急制动（AEB）。本车默认使用车辆自带的 ACC，而非 sunnypilot 的纵向控制。启用本项可切换到 sunnypilot 纵向控制（alpha）。建议同时启用实验模式。在车辆通电状态下修改此项会重启 sunnypilot。",
               "visibility": [
                 {
                   "type": "all",
@@ -1855,14 +1855,14 @@
             {
               "key": "ShowDebugInfo",
               "widget": "toggle",
-              "title": "UI Debug Mode"
+              "title": "界面调试模式"
             }
           ]
         },
         {
           "id": "test_maneuvers",
-          "title": "Test Maneuvers",
-          "description": "DANGER: enabling these maneuvers replaces normal driving behavior with deterministic test sequences. Each toggle requires explicit confirmation per write. Use only in a closed environment.",
+          "title": "测试操作",
+          "description": "危险：启用这些操作会用固定测试序列替代正常驾驶行为。每次改动都需明确确认。仅限封闭场地使用。",
           "visibility": [
             {
               "type": "any",
@@ -1902,8 +1902,8 @@
             {
               "key": "LateralManeuverMode",
               "widget": "toggle",
-              "title": "[TEST] Lateral Maneuver Mode",
-              "description": "Replaces normal lateral control with a deterministic test sequence. NOT for road use.",
+              "title": "[测试] 横向操作模式",
+              "description": "用固定测试序列替代正常横向控制。请勿在道路上使用。",
               "enablement": [
                 {
                   "type": "not_engaged"
@@ -1918,8 +1918,8 @@
             {
               "key": "LongitudinalManeuverMode",
               "widget": "toggle",
-              "title": "[TEST] Longitudinal Maneuver Mode",
-              "description": "Replaces normal longitudinal control with a deterministic test sequence. NOT for road use.",
+              "title": "[测试] 纵向操作模式",
+              "description": "用固定测试序列替代正常纵向控制。请勿在道路上使用。",
               "enablement": [
                 {
                   "type": "not_engaged"
@@ -1935,20 +1935,20 @@
         },
         {
           "id": "advanced_services",
-          "title": "Advanced Settings",
+          "title": "高级设置",
           "description": "",
           "items": [
             {
               "key": "ShowAdvancedControls",
               "widget": "toggle",
-              "title": "Show Advanced Controls",
-              "description": "Toggle visibility of advanced sunnypilot controls. This only changes the visibility of the toggles; it does not change the actual enabled/disabled state."
+              "title": "显示高级控制项",
+              "description": "切换高级控制项是否显示。这只影响这些开关的可见性，不改变它们实际是开还是关。"
             },
             {
               "key": "EnableGithubRunner",
               "widget": "toggle",
-              "title": "GitHub Runner Service",
-              "description": "Enables or disables the GitHub runner service.",
+              "title": "GitHub Runner 服务",
+              "description": "启用或停用 GitHub Runner 服务。",
               "visibility": [
                 {
                   "type": "not",
@@ -1970,8 +1970,8 @@
             {
               "key": "EnableCopyparty",
               "widget": "toggle",
-              "title": "copyparty Service",
-              "description": "copyparty is a very capable file server, you can use it to download your routes, view your logs and even make some edits on some files from your browser. Requires you to connect to your comma locally via its IP address.",
+              "title": "copyparty 文件服务",
+              "description": "copyparty 是一个功能很强的文件服务器，可以用它在浏览器里下载行车记录、查看日志，甚至直接编辑部分文件。需要通过设备的局域网 IP 连接使用。",
               "enablement": [
                 {
                   "type": "param",
@@ -1983,7 +1983,7 @@
             {
               "key": "QuickBootToggle",
               "widget": "toggle",
-              "title": "Quickboot Mode",
+              "title": "快速启动模式",
               "visibility": [
                 {
                   "type": "not",
@@ -2023,28 +2023,28 @@
     },
     {
       "id": "models",
-      "label": "Models",
+      "label": "模型",
       "icon": "models",
       "order": 10,
       "remote_configurable": false,
-      "description": "Driving model behavior and camera calibration",
+      "description": "驾驶模型行为与摄像头标定",
       "sections": [
         {
           "id": "model_behavior",
-          "title": "Model Behavior",
-          "description": "Lane desire and lead-vehicle awareness tuning",
+          "title": "模型行为",
+          "description": "变道意图与前车感知调校",
           "items": [
             {
               "key": "LaneTurnDesire",
               "widget": "toggle",
-              "title": "Use Lane Turn Desires",
-              "description": "If you are driving at 20 mph (32 km/h) or below and have your blinker on, the car will plan a turn in that direction at the nearest drivable path. This prevents situations (like at red lights) where the car might plan the wrong turn direction."
+              "title": "启用转弯意图",
+              "description": "当车速在 20 mph（32 km/h）以下且打了转向灯时，车辆会在最近的可行驶路径处规划该方向的转弯。这能避免在红灯路口等场景下规划错转弯方向。"
             },
             {
               "key": "LaneTurnValue",
               "widget": "option",
-              "title": "Adjust Lane Turn Speed",
-              "description": "Set the maximum speed for lane turn desires.",
+              "title": "调整转弯速度上限",
+              "description": "设置启用转弯意图的最高车速。",
               "min": 0,
               "max": 20,
               "step": 1,
@@ -2068,14 +2068,14 @@
             {
               "key": "LagdToggle",
               "widget": "toggle",
-              "title": "Live Learning Steer Delay",
-              "description": "Allow device to learn and adapt car's steering response time"
+              "title": "实时学习转向延迟",
+              "description": "让设备学习并适配车辆的转向响应时间"
             },
             {
               "key": "LagdToggleDelay",
               "widget": "option",
-              "title": "Adjust Software Delay",
-              "description": "Adjust the software delay when Live Learning Steer Delay is toggled off. The default software delay value is 0.2",
+              "title": "调整软件延迟",
+              "description": "在关闭「实时学习转向延迟」时手动调整软件延迟。默认软件延迟值为 0.2",
               "min": 0.05,
               "max": 0.5,
               "step": 0.01,
@@ -2099,14 +2099,14 @@
         },
         {
           "id": "lateral_control",
-          "title": "Lateral Control",
-          "description": "Neural network lateral control for supported models",
+          "title": "横向控制",
+          "description": "在支持的模型上使用神经网络横向控制",
           "items": [
             {
               "key": "NeuralNetworkLateralControl",
               "widget": "toggle",
-              "title": "Neural Network Lateral Control (NNLC)",
-              "description": "Use a neural network for lateral control instead of the default torque controller.",
+              "title": "神经网络横向控制（NNLC）",
+              "description": "使用神经网络进行横向控制，代替默认的扭矩控制器。",
               "visibility": [
                 {
                   "type": "not",
@@ -2142,14 +2142,14 @@
         },
         {
           "id": "camera",
-          "title": "Camera",
-          "description": "Camera position and calibration",
+          "title": "摄像头",
+          "description": "摄像头位置与标定",
           "items": [
             {
               "key": "CameraOffset",
               "widget": "option",
-              "title": "Adjust Camera Offset",
-              "description": "Virtually shift camera's perspective to move model's center to Left(+ values) or Right (- values)",
+              "title": "调整摄像头偏移",
+              "description": "虚拟平移摄像头视角，将模型中心向左（正值）或向右（负值）移动",
               "min": -0.35,
               "max": 0.35,
               "step": 0.01,
@@ -2169,25 +2169,25 @@
   ],
   "vehicle_settings": {
     "hyundai": {
-      "title": "Hyundai / Kia / Genesis Settings",
+      "title": "现代 / 起亚 / 捷尼赛思 设置",
       "description": "",
       "items": [
         {
           "key": "HyundaiLongitudinalTuning",
           "widget": "multiple_button",
-          "title": "Custom Longitudinal Tuning",
+          "title": "自定义纵向控制调校",
           "options": [
             {
               "value": 0,
-              "label": "Off"
+              "label": "关闭"
             },
             {
               "value": 1,
-              "label": "Dynamic"
+              "label": "动态"
             },
             {
               "value": 2,
-              "label": "Predictive"
+              "label": "预测式"
             }
           ],
           "visibility": [
@@ -2211,13 +2211,13 @@
       ]
     },
     "subaru": {
-      "title": "Subaru Settings",
+      "title": "斯巴鲁 设置",
       "description": "",
       "items": [
         {
           "key": "SubaruStopAndGo",
           "widget": "toggle",
-          "title": "Stop and Go (Beta)",
+          "title": "停车起步（测试版）",
           "enablement": [
             {
               "type": "offroad_only"
@@ -2232,7 +2232,7 @@
         {
           "key": "SubaruStopAndGoManualParkingBrake",
           "widget": "toggle",
-          "title": "Stop and Go for Manual Parking Brake (Beta)",
+          "title": "机械手刹车型停车起步（测试版）",
           "enablement": [
             {
               "type": "offroad_only"
@@ -2247,13 +2247,13 @@
       ]
     },
     "tesla": {
-      "title": "Tesla Settings",
+      "title": "特斯拉 设置",
       "description": "",
       "items": [
         {
           "key": "TeslaCoopSteering",
           "widget": "toggle",
-          "title": "Cooperative Steering (Beta)",
+          "title": "协作转向（测试版）",
           "enablement": [
             {
               "type": "offroad_only"
@@ -2263,24 +2263,24 @@
         {
           "key": "TeslaMadsScreenButton",
           "widget": "multiple_button",
-          "title": "MADS Screen Activation",
-          "description": "Use a multi-finger press on the infotainment screen to toggle MADS. This allows the use of full MADS functionality when enabled. Selecting a higher finger count may reduce accidental activations. Note: Setting this to Off will reset your MADS settings to default.",
+          "title": "MADS 屏幕激活方式",
+          "description": "用车机屏幕多指按压来切换 MADS。启用后可使用 MADS 的完整功能。选择更多手指可以减少误触发。注意：设为关闭会把 MADS 设置重置为默认值。",
           "options": [
             {
               "value": 0,
-              "label": "Off"
+              "label": "关闭"
             },
             {
               "value": 1,
-              "label": "3-Finger"
+              "label": "三指"
             },
             {
               "value": 2,
-              "label": "4-Finger"
+              "label": "四指"
             },
             {
               "value": 3,
-              "label": "5-Finger"
+              "label": "五指"
             }
           ],
           "visibility": [
@@ -2299,15 +2299,15 @@
       ]
     },
     "toyota": {
-      "title": "Toyota / Lexus Settings",
+      "title": "丰田 / 雷克萨斯 设置",
       "description": "",
       "items": [
         {
           "key": "ToyotaEnforceStockLongitudinal",
           "widget": "toggle",
           "needs_onroad_cycle": true,
-          "title": "Enforce Factory Longitudinal Control",
-          "description": "sunnypilot will not take over control of gas and brakes. Factory Toyota longitudinal control will be used.",
+          "title": "强制使用原厂纵向控制",
+          "description": "sunnypilot 不会接管油门和刹车，将使用丰田原厂纵向控制。",
           "enablement": [
             {
               "type": "not_engaged"
@@ -2318,8 +2318,8 @@
           "key": "ToyotaStopAndGoHack",
           "widget": "toggle",
           "needs_onroad_cycle": true,
-          "title": "Stop and Go Hack (Alpha)",
-          "description": "sunnypilot will allow some Toyota/Lexus cars to auto resume during stop and go traffic. This feature is only applicable to certain models that are able to use longitudinal control. This is an alpha feature. Use at your own risk.",
+          "title": "停车起步 Hack（Alpha）",
+          "description": "sunnypilot 会让部分丰田/雷克萨斯车型在拥堵跟车时自动起步。此功能仅适用于可以使用纵向控制的部分车型，属于 alpha 功能，请自行承担风险。",
           "enablement": [
             {
               "type": "not_engaged"
