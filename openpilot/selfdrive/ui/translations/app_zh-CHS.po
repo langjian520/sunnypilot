@@ -1014,3 +1014,7 @@ msgstr "版本"
 msgid "what is sunnypilot?"
 msgstr "什么是 sunnypilot？"
 
+
+#: openpilot/selfdrive/ui/mici/layouts/settings/device.py
+msgid "ui mirror"
+msgstr "画面镜像到车机"

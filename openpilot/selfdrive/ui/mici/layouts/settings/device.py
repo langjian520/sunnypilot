@@ -6,7 +6,7 @@ from openpilot.common.basedir import BASEDIR
 from openpilot.common.params import Params
 from openpilot.common.time_helpers import system_time_valid
 from openpilot.system.ui.widgets.scroller import NavRawScrollPanel, NavScroller
-from openpilot.selfdrive.ui.mici.widgets.button import BigButton, BigCircleButton
+from openpilot.selfdrive.ui.mici.widgets.button import BigButton, BigCircleButton, BigParamControl
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigDialog, BigConfirmationDialog
 from openpilot.selfdrive.ui.mici.widgets.dialog import BigInputDialog
 from openpilot.selfdrive.ui.mici.widgets.pairing_dialog import PairingDialog
@@ -214,12 +214,16 @@ class DeviceLayoutMici(NavScroller):
       gui_app.push_widget(BigInputDialog("enter pairing code...", cur, minimum_length=0, confirm_callback=_save))
     pairing_code_btn.set_click_callback(_open_pairing_code)
 
+    # ui-mirror: 把完整 UI 画面推到车机大屏。服务端见 openpilot/tools/ui-mirror/
+    ui_mirror_toggle = BigParamControl("ui mirror", "UiMirrorEnabled")
+
     self._scroller.add_widgets([
       DeviceInfoLayoutMici(),
       PairBigButton(),
       pairing_code_btn,
       review_training_guide_btn,
       cabin_cam_btn,
+      ui_mirror_toggle,
       terms_btn,
       regulatory_btn,
       reset_calibration_btn,

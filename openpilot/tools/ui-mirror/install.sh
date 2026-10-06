@@ -145,11 +145,14 @@ say "给 openpilot 注入环境变量"
 mkdir -p "$DROPIN_DIR"
 cat > "$DROPIN_DIR/10-ui-mirror.conf" <<EOF
 [Service]
-Environment="MIRROR=1"
+# 总开关在设备上：设置 → 设备 → "ui mirror"（底层是 params 的 UiMirrorEnabled）
+# 想跳过开关直接常开，就加一行: Environment="MIRROR=1"
 Environment="MIRROR_URL=$MIRROR_URL"
 Environment="MIRROR_FPS=15"
 Environment="MIRROR_BITRATE=1200k"
 Environment="MIRROR_ENCODER=libx264"
+# 画面方向不对就把下面这行的注释去掉（transpose=1/2/3、hflip、vflip 逐个试）
+# Environment="MIRROR_EXTRA_VF=transpose=1"
 EOF
 ok "写入 $DROPIN_DIR/10-ui-mirror.conf"
 
@@ -172,7 +175,13 @@ IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 
 echo
 echo "---------------------------------------------------------------"
-echo "装好了（模式: $MODE，设备 IP: $IP）。车机上看这里："
+echo "装好了（模式: $MODE，设备 IP: $IP）。"
+echo
+echo "打开开关（二选一）："
+echo "  ① 设备上: 设置 → 设备 → ui mirror"
+echo "  ② 命令行: python3 -c \"from openpilot.common.params import Params; Params().put_bool('UiMirrorEnabled', True)\""
+echo
+echo "然后在车机上打开："
 if [ "$MODE" = "rtsp" ]; then
   echo "  RTSP（VLC / MX Player，推荐）: rtsp://$IP:8554/ui"
   echo "  浏览器 HLS                  : http://$IP:8888/ui/index.m3u8"
