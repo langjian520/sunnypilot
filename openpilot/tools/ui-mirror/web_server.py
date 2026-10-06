@@ -94,6 +94,7 @@ class FrameHub:
       self._cond.notify_all()
 
   def _pump(self):
+    sock = None
     while True:
       try:
         sock = socket.create_connection(self._addr, timeout=3)
@@ -125,10 +126,12 @@ class FrameHub:
         pass
       finally:
         self._set_connected(False)
-        try:
-          sock.close()
-        except Exception:
-          pass
+        if sock is not None:
+          try:
+            sock.close()
+          except Exception:
+            pass
+          sock = None
       time.sleep(1)   # ffmpeg 还没起来 / 刚挂掉，等一会儿再连
 
 
