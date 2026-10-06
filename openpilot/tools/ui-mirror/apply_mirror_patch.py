@@ -9,6 +9,11 @@
 开关：设置 → 设备 → "ui mirror"（底层是 params 的 UiMirrorEnabled，见 README）。
       打开后 1 秒内 ffmpeg 自动起来，关掉自动收掉，不用重启 openpilot。
 
+一共补三个文件（后两个是现场踩出来的坑，见对应注释）：
+  openpilot/system/ui/lib/application.py              取帧 / 启停 / 开关
+  openpilot/common/params.py                          UiMirrorEnabled 活过 clear_all()
+  openpilot/selfdrive/ui/mici/layouts/settings/device.py  设置页里的开关
+
 用法（在 comma 设备上、以 root 运行）：
   python3 apply_mirror_patch.py                     # 打补丁（默认路径）
   python3 apply_mirror_patch.py /path/to/application.py
@@ -16,17 +21,23 @@
 
 幂等：已打过补丁会直接提示退出；每次修改前自动备份为 <file>.mirror.bak
 
+注意：AGNOS 的更新机制会在「有暂存好的更新」落地时整个替换 /data/openpilot，
+      本地改动会被冲掉。install.sh 会装一个 systemd timer 定期自检并补回补丁。
+
 调参用这些环境变量（写在 comma.service 的 drop-in 里）：
-  MIRROR=1                              强制常开（忽略设置里的开关）
-  MIRROR=0                              彻底关掉（连代码路径都不走）
-  MIRROR_URL=rtsp://127.0.0.1:8554/ui   推给 mediamtx（延迟最低）
-                 udp://车机IP:1234      直接 MPEG-TS 推过去
-                 hls:///tmp/hls/ui.m3u8 切片到目录，连服务端都不用装的备选方案
-  MIRROR_FPS=15                         推流帧率，UI 本身照旧 60fps
-  MIRROR_SCALE=1.0                      画面缩放，压力大就调小
+  MIRROR=1                                    强制常开（忽略设置里的开关）
+  MIRROR=0                                    彻底关掉（连代码路径都不走）
+  MIRROR_FFMPEG=/data/ui-mirror/bin/ffmpeg    用哪个 ffmpeg。
+        comma 自带的 /usr/local/venv/bin/ffmpeg 是 openpilot 精简构建，只认
+        file/pipe 两种协议、没有 hls 封装器，所以必须用完整版（install.sh 会装）。
+  MIRROR_URL=hls:///tmp/ui_mirror/live.m3u8   输出目标（默认 HLS 切片）
+                 rtsp://127.0.0.1:8554/ui     有 RTSP 服务器时可用（延迟更低）
+                 udp://车机IP:1234             有播放器监听时可直接推
+  MIRROR_FPS=15                               推流帧率，UI 本身照旧 60fps
+  MIRROR_SCALE=1.0                            画面缩放，压力大就调小
   MIRROR_BITRATE=1200k
-  MIRROR_ENCODER=libx264                或 h264_v4l2m2m（硬件编码，看设备支不支持）
-  MIRROR_EXTRA_VF=                      画面方向不对时填 transpose=1 / hflip 等
+  MIRROR_ENCODER=libx264                      或 h264_v4l2m2m（硬编，会和 openpilot 抢编码器，慎用）
+  MIRROR_EXTRA_VF=                            画面方向不对时填 transpose=1 / hflip 等
 """
 
 import argparse
@@ -49,7 +60,8 @@ ENV_NEW = ENV_BLOCK + '''
 # --- ui mirror (added by apply_mirror_patch.py) ---
 MIRROR_ENV = os.getenv("MIRROR", "")                # "1"=强制开、"0"=彻底关、不写=听设置里的开关
 MIRROR_AVAILABLE = MIRROR_ENV != "0"                # 是否具备推流能力
-MIRROR_URL = os.getenv("MIRROR_URL", "rtsp://127.0.0.1:8554/ui")
+MIRROR_FFMPEG = os.getenv("MIRROR_FFMPEG", "/data/ui-mirror/bin/ffmpeg")  # 必须是完整版 ffmpeg
+MIRROR_URL = os.getenv("MIRROR_URL", "hls:///tmp/ui_mirror/live.m3u8")
 MIRROR_FPS = int(os.getenv("MIRROR_FPS", "15"))     # 推流帧率，UI 本身仍是 60fps
 MIRROR_SCALE = float(os.getenv("MIRROR_SCALE", "1.0"))  # 画面缩放，负载高就调小
 MIRROR_BITRATE = os.getenv("MIRROR_BITRATE", "1200k")
@@ -97,8 +109,8 @@ METHODS_NEW = '''  def _start_ui_mirror(self):
     scale_filter = "" if MIRROR_SCALE == 1.0 else f",scale=iw*{MIRROR_SCALE}:ih*{MIRROR_SCALE}"
     extra_filter = "" if not MIRROR_EXTRA_VF else f",{MIRROR_EXTRA_VF}"
     ffmpeg_args = [
-      'ffmpeg',
-      '-v', 'warning',
+      MIRROR_FFMPEG,
+      '-v', 'error',
       '-nostats',
       '-f', 'rawvideo',
       '-pix_fmt', 'rgba',
@@ -107,26 +119,42 @@ METHODS_NEW = '''  def _start_ui_mirror(self):
       '-i', 'pipe:0',
       '-vf', f'vflip{scale_filter}{extra_filter},format=yuv420p',
       '-c:v', MIRROR_ENCODER,
+      # 每 MIRROR_FPS 帧一个关键帧 => 正好 1 秒一个 GOP，HLS 才能在片段边界干净切开
+      '-g', str(MIRROR_FPS),
     ]
     if MIRROR_ENCODER == 'libx264':
-      ffmpeg_args += ['-preset', 'ultrafast', '-tune', 'zerolatency', '-crf', '30',
-                      '-g', str(MIRROR_FPS * 2), '-pix_fmt', 'yuv420p']
-    ffmpeg_args += ['-b:v', MIRROR_BITRATE, '-maxrate', MIRROR_BITRATE,
-                    '-fflags', 'nobuffer', '-flush_packets', '1']
-    if MIRROR_URL.startswith('rtsp://'):
-      ffmpeg_args += ['-rtsp_transport', 'tcp', '-f', 'rtsp', MIRROR_URL]
-    elif MIRROR_URL.startswith('hls://'):
-      hls_path = MIRROR_URL[len('hls://'):]
-      os.makedirs(os.path.dirname(hls_path) or '.', exist_ok=True)
-      ffmpeg_args += ['-f', 'hls', '-hls_time', '1', '-hls_list_size', '3',
-                      '-hls_flags', 'delete_segments+independent_segments+omit_endlist',
-                      hls_path]
-    else:
-      ffmpeg_args += ['-f', 'mpegts', MIRROR_URL]
+      ffmpeg_args += ['-preset', 'ultrafast', '-tune', 'zerolatency',
+                      '-pix_fmt', 'yuv420p',
+                      '-b:v', MIRROR_BITRATE, '-maxrate', MIRROR_BITRATE,
+                      '-bufsize', MIRROR_BITRATE]
 
-    # 上一轮还在收尾就等下一秒，绝不能让两个线程往同一个管道里写
+    if MIRROR_URL.startswith('hls://'):
+      # 默认路线：切成 HLS 片段放到 /tmp（内存盘，不磨损 eMMC），web_server.py 负责发出去
+      hls_path = MIRROR_URL[len('hls://'):]
+      try:
+        os.makedirs(os.path.dirname(hls_path) or '.', exist_ok=True)
+      except Exception:
+        pass
+      ffmpeg_args += ['-f', 'hls',
+                      '-hls_time', '1',
+                      '-hls_list_size', '3',
+                      '-hls_flags', 'delete_segments+independent_segments+omit_endlist',
+                      '-hls_segment_type', 'mpegts',
+                      hls_path]
+    elif MIRROR_URL.startswith('rtsp://'):
+      ffmpeg_args += ['-b:v', MIRROR_BITRATE, '-maxrate', MIRROR_BITRATE,
+                      '-rtsp_transport', 'tcp', '-f', 'rtsp', MIRROR_URL]
+    else:
+      ffmpeg_args += ['-b:v', MIRROR_BITRATE, '-maxrate', MIRROR_BITRATE,
+                      '-fflags', 'nobuffer', '-flush_packets', '1',
+                      '-f', 'mpegts', MIRROR_URL]
+
+    # 上一轮还在收尾就不重复启动，绝不能让两个线程往同一个管道里写。
+    # 注意：只有"旧进程还活着"才算在收尾 —— ffmpeg 意外退出时它的写线程会一直卡在
+    # 队列上不退出，只看 is_alive() 会把重启永久拦住。
+    old_proc = getattr(self, "_ffmpeg_proc", None)
     old_thread = getattr(self, "_ffmpeg_thread", None)
-    if old_thread is not None and old_thread.is_alive():
+    if old_thread is not None and old_thread.is_alive() and old_proc is not None and old_proc.poll() is None:
       return
 
     try:
@@ -195,6 +223,14 @@ METHODS_NEW = '''  def _start_ui_mirror(self):
 
     proc = getattr(self, "_ffmpeg_proc", None)
     running = proc is not None and proc.poll() is None
+
+    # ffmpeg 自己挂了（写不了文件、参数不对……）就把残留收干净，下一轮再重来。
+    # 不收的话写线程会一直挂着，_start_ui_mirror 的保护会永久拦住重启。
+    if proc is not None and not running:
+      cloudlog.error(f"ui mirror: ffmpeg exited (rc={proc.returncode}), will retry")
+      self._stop_ui_mirror()
+      return
+
     if ui_mirror_enabled():
       if not running:
         self._start_ui_mirror()
@@ -229,11 +265,24 @@ GRAB_NEW = GRAB_OLD + '''        elif MIRROR_AVAILABLE:
               rl.unload_image(image)
 '''
 
+# 屏幕熄灭时 openpilot 会直接 continue，取帧代码在 yield 之后永远走不到 —— 镜像跟着黑。
+# _should_render 由 ui_state._set_awake 驱动（点火 / 无操作超时 / PC），
+# 所以停车、台架上没点火时 30 秒后屏幕一灭，ffmpeg 就再也起不来了。
+RENDER_GATE_OLD = """        # Skip rendering when screen is off
+        if not self._should_render:
+"""
+
+RENDER_GATE_NEW = """        # Skip rendering when screen is off
+        # ui mirror: 镜像开着的时候例外 —— 屏幕灭了也要继续渲染，否则车机上跟着一起黑
+        if not self._should_render and not ui_mirror_enabled():
+"""
+
 EDITS = [
     ("环境变量与开关逻辑", ENV_BLOCK, ENV_NEW),
     ("渲染到纹理", TRY_TEXTURE_OLD, TRY_TEXTURE_NEW),
     ("ffmpeg 按需启停", METHODS_ANCHOR, METHODS_NEW),
     ("取帧与丢帧保护", GRAB_OLD, GRAB_NEW),
+    ("屏幕熄灭时仍然渲染", RENDER_GATE_OLD, RENDER_GATE_NEW),
 ]
 
 # ---------------------------------------------- 另外两个文件：开关本身 + 参数注册
@@ -261,6 +310,125 @@ PARAMS_CHECK_NEW = '''    if key in _KEYS_UNKNOWN_TO_PREBUILT_LIBPARAMS:
     if b"\\0" in key or not params_check_key(self.p, key):
       raise UnknownKeyName(key)'''
 
+# ---- 影子存储：让这些 key 活过 manager 的 clear_all() ----
+# 只放行 check_key() 还不够。common/params.cc 的 clearAll() 长这样：
+#     auto it = keys.find(de->d_name);
+#     if (it == keys.end() || (it->second.flags & key_flag)) unlink(...);
+# 也就是说「不在这张 native key 表里」的文件一律删掉，而 system/manager/manager.py
+# 在启动时、以及每次 onroad / offroad / 点火切换时都会调它（第 33-36 行、148-154 行）。
+# 现场表现：开关打开 -> 上车 -> clear_all(CLEAR_ON_IGNITION_ON) -> 参数没了 -> 镜像自动关。
+# 设备是 prebuilt（launch_chffrplus.sh 看到 prebuilt 标记就跳过 build.py），不想在设备上重编
+# native，于是在 Python 层留个影子副本，clear_all() 之后再放回去。
+PARAMS_SHADOW_OLD = '''_KEYS_UNKNOWN_TO_PREBUILT_LIBPARAMS = {
+    b"UiMirrorEnabled",        # ui mirror toggle (openpilot/tools/ui-mirror)
+    b"SunnyconfPairingCode",   # sunnyconf 自带
+}
+'''
+
+PARAMS_SHADOW_NEW = PARAMS_SHADOW_OLD + '''
+# 影子存储：见上面的说明。存在 /data 下而不是 /tmp —— 设备重启也会走一遍 clear_all()，
+# 影子丢了参数就真丢了。
+_PARAM_SHADOW_DIR = Path("/data/ui-mirror/params")
+
+
+def _shadow_path(key) -> Path:
+  return _PARAM_SHADOW_DIR / ensure_bytes(key).decode("utf-8", "replace")
+
+
+def _shadow_save(key, value: bytes) -> None:
+  # 目录可能是 root 建的：mkdir / chmod 都当 best-effort，改不动就跳过。
+  # 参数本体写在 /data/params/d/ 下，影子写失败只是少一层保险，不能因此抛错。
+  try:
+    _PARAM_SHADOW_DIR.mkdir(parents=True, exist_ok=True)
+  except Exception:
+    pass
+  try:
+    _PARAM_SHADOW_DIR.chmod(0o777)
+  except Exception:
+    pass
+  try:
+    p = _shadow_path(key)
+    p.write_bytes(value)
+    try:
+      p.chmod(0o666)
+    except Exception:
+      pass
+  except Exception as e:
+    cloudlog.warning(f"param shadow: failed to save {key}: {e}")
+
+
+def _shadow_load(key):
+  try:
+    return _shadow_path(key).read_bytes()
+  except Exception:
+    return None
+
+
+def _shadow_forget(key) -> None:
+  try:
+    _shadow_path(key).unlink()
+  except Exception:
+    pass
+
+
+def _restore_unknown_keys(params) -> None:
+  """clear_all() 刚把它们删了，照影子副本放回去。"""
+  for key in _KEYS_UNKNOWN_TO_PREBUILT_LIBPARAMS:
+    value = _shadow_load(key)
+    if value is None:
+      continue
+    try:
+      params_put(params.p, key, value, len(value), True)
+    except Exception as e:
+      cloudlog.warning(f"param shadow: failed to restore {key}: {e}")
+'''
+
+PARAMS_PUT_OLD = """    k = self.check_key(key)
+    value = self._put_cast(k, dat)
+    params_put(self.p, k, value, len(value), block)
+"""
+
+PARAMS_PUT_NEW = """    k = self.check_key(key)
+    value = self._put_cast(k, dat)
+    params_put(self.p, k, value, len(value), block)
+    if k in _KEYS_UNKNOWN_TO_PREBUILT_LIBPARAMS:
+      _shadow_save(k, value)
+"""
+
+PARAMS_PUT_BOOL_OLD = """  def put_bool(self, key, val, block=False):
+    params_put_bool(self.p, self.check_key(key), val, block)
+"""
+
+PARAMS_PUT_BOOL_NEW = """  def put_bool(self, key, val, block=False):
+    k = self.check_key(key)
+    params_put_bool(self.p, k, val, block)
+    if k in _KEYS_UNKNOWN_TO_PREBUILT_LIBPARAMS:
+      _shadow_save(k, b"1" if val else b"0")
+"""
+
+PARAMS_REMOVE_OLD = """  def remove(self, key):
+    params_remove(self.p, self.check_key(key))
+"""
+
+PARAMS_REMOVE_NEW = """  def remove(self, key):
+    k = self.check_key(key)
+    params_remove(self.p, k)
+    if k in _KEYS_UNKNOWN_TO_PREBUILT_LIBPARAMS:
+      _shadow_forget(k)
+"""
+
+PARAMS_CLEAR_OLD = """  def clear_all(self, tx_flag=ParamKeyFlag.ALL):
+    params_clear_all(self.p, int(tx_flag))
+"""
+
+PARAMS_CLEAR_NEW = """  def clear_all(self, tx_flag=ParamKeyFlag.ALL):
+    params_clear_all(self.p, int(tx_flag))
+    # 原生 clearAll() 会把「不在 libparams key 表里」的文件一并 unlink，
+    # 于是 prebuilt 设备上 UiMirrorEnabled 这类 key 一上下电就消失。
+    # 清理之后用影子副本把它们放回去。
+    _restore_unknown_keys(self)
+"""
+
 DEVICE_IMPORT_OLD = "from openpilot.selfdrive.ui.mici.widgets.button import BigButton, BigCircleButton\n"
 DEVICE_IMPORT_NEW = "from openpilot.selfdrive.ui.mici.widgets.button import BigButton, BigCircleButton, BigParamControl\n"
 
@@ -280,7 +448,12 @@ DEVICE_ROW_NEW = '''      cabin_cam_btn,
 EXTRA_FILES = [
     ("openpilot/common/params.py", [
         ("参数注册", PARAMS_OLD, PARAMS_NEW),
+        ("影子存储 helper", PARAMS_SHADOW_OLD, PARAMS_SHADOW_NEW),
         ("check_key 放行", PARAMS_CHECK_OLD, PARAMS_CHECK_NEW),
+        ("put 时留副本", PARAMS_PUT_OLD, PARAMS_PUT_NEW),
+        ("put_bool 时留副本", PARAMS_PUT_BOOL_OLD, PARAMS_PUT_BOOL_NEW),
+        ("remove 时清副本", PARAMS_REMOVE_OLD, PARAMS_REMOVE_NEW),
+        ("clear_all 之后恢复", PARAMS_CLEAR_OLD, PARAMS_CLEAR_NEW),
     ]),
     ("openpilot/selfdrive/ui/mici/layouts/settings/device.py", [
         ("import 开关组件", DEVICE_IMPORT_OLD, DEVICE_IMPORT_NEW),

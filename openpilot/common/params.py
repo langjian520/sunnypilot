@@ -112,6 +112,62 @@ _KEYS_UNKNOWN_TO_PREBUILT_LIBPARAMS = {
     b"SunnyconfPairingCode",   # sunnyconf 自带
 }
 
+# 影子存储：见上面的说明。存在 /data 下而不是 /tmp —— 设备重启也会走一遍 clear_all()，
+# 影子丢了参数就真丢了。
+_PARAM_SHADOW_DIR = Path("/data/ui-mirror/params")
+
+
+def _shadow_path(key) -> Path:
+  return _PARAM_SHADOW_DIR / ensure_bytes(key).decode("utf-8", "replace")
+
+
+def _shadow_save(key, value: bytes) -> None:
+  # 目录可能是 root 建的：mkdir / chmod 都当 best-effort，改不动就跳过。
+  # 参数本体写在 /data/params/d/ 下，影子写失败只是少一层保险，不能因此抛错。
+  try:
+    _PARAM_SHADOW_DIR.mkdir(parents=True, exist_ok=True)
+  except Exception:
+    pass
+  try:
+    _PARAM_SHADOW_DIR.chmod(0o777)
+  except Exception:
+    pass
+  try:
+    p = _shadow_path(key)
+    p.write_bytes(value)
+    try:
+      p.chmod(0o666)
+    except Exception:
+      pass
+  except Exception as e:
+    cloudlog.warning(f"param shadow: failed to save {key}: {e}")
+
+
+def _shadow_load(key):
+  try:
+    return _shadow_path(key).read_bytes()
+  except Exception:
+    return None
+
+
+def _shadow_forget(key) -> None:
+  try:
+    _shadow_path(key).unlink()
+  except Exception:
+    pass
+
+
+def _restore_unknown_keys(params) -> None:
+  """clear_all() 刚把它们删了，照影子副本放回去。"""
+  for key in _KEYS_UNKNOWN_TO_PREBUILT_LIBPARAMS:
+    value = _shadow_load(key)
+    if value is None:
+      continue
+    try:
+      params_put(params.p, key, value, len(value), True)
+    except Exception as e:
+      cloudlog.warning(f"param shadow: failed to restore {key}: {e}")
+
 
 def _copy_string(value):
   if value.data is None:
@@ -136,6 +192,10 @@ class Params:
 
   def clear_all(self, tx_flag=ParamKeyFlag.ALL):
     params_clear_all(self.p, int(tx_flag))
+    # 原生 clearAll() 会把「不在 libparams key 表里」的文件一并 unlink，
+    # 于是 prebuilt 设备上 UiMirrorEnabled 这类 key 一上下电就消失。
+    # 清理之后用影子副本把它们放回去。
+    _restore_unknown_keys(self)
 
   def check_key(self, key):
     key = ensure_bytes(key)
@@ -192,12 +252,20 @@ class Params:
     k = self.check_key(key)
     value = self._put_cast(k, dat)
     params_put(self.p, k, value, len(value), block)
+    if k in _KEYS_UNKNOWN_TO_PREBUILT_LIBPARAMS:
+      _shadow_save(k, value)
 
   def put_bool(self, key, val, block=False):
-    params_put_bool(self.p, self.check_key(key), val, block)
+    k = self.check_key(key)
+    params_put_bool(self.p, k, val, block)
+    if k in _KEYS_UNKNOWN_TO_PREBUILT_LIBPARAMS:
+      _shadow_save(k, b"1" if val else b"0")
 
   def remove(self, key):
-    params_remove(self.p, self.check_key(key))
+    k = self.check_key(key)
+    params_remove(self.p, k)
+    if k in _KEYS_UNKNOWN_TO_PREBUILT_LIBPARAMS:
+      _shadow_forget(k)
 
   def get_param_path(self, key=""):
     key = ensure_bytes(key)

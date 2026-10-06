@@ -51,7 +51,8 @@ OFFSCREEN = os.getenv("OFFSCREEN") == "1"  # Disable FPS limiting for fast offli
 # --- ui mirror (added by apply_mirror_patch.py) ---
 MIRROR_ENV = os.getenv("MIRROR", "")                # "1"=强制开、"0"=彻底关、不写=听设置里的开关
 MIRROR_AVAILABLE = MIRROR_ENV != "0"                # 是否具备推流能力
-MIRROR_URL = os.getenv("MIRROR_URL", "rtsp://127.0.0.1:8554/ui")
+MIRROR_FFMPEG = os.getenv("MIRROR_FFMPEG", "/data/ui-mirror/bin/ffmpeg")  # 必须是完整版 ffmpeg
+MIRROR_URL = os.getenv("MIRROR_URL", "hls:///tmp/ui_mirror/live.m3u8")
 MIRROR_FPS = int(os.getenv("MIRROR_FPS", "15"))     # 推流帧率，UI 本身仍是 60fps
 MIRROR_SCALE = float(os.getenv("MIRROR_SCALE", "1.0"))  # 画面缩放，负载高就调小
 MIRROR_BITRATE = os.getenv("MIRROR_BITRATE", "1200k")
@@ -401,8 +402,8 @@ class GuiApplication(GuiApplicationExt):
     scale_filter = "" if MIRROR_SCALE == 1.0 else f",scale=iw*{MIRROR_SCALE}:ih*{MIRROR_SCALE}"
     extra_filter = "" if not MIRROR_EXTRA_VF else f",{MIRROR_EXTRA_VF}"
     ffmpeg_args = [
-      'ffmpeg',
-      '-v', 'warning',
+      MIRROR_FFMPEG,
+      '-v', 'error',
       '-nostats',
       '-f', 'rawvideo',
       '-pix_fmt', 'rgba',
@@ -411,26 +412,42 @@ class GuiApplication(GuiApplicationExt):
       '-i', 'pipe:0',
       '-vf', f'vflip{scale_filter}{extra_filter},format=yuv420p',
       '-c:v', MIRROR_ENCODER,
+      # 每 MIRROR_FPS 帧一个关键帧 => 正好 1 秒一个 GOP，HLS 才能在片段边界干净切开
+      '-g', str(MIRROR_FPS),
     ]
     if MIRROR_ENCODER == 'libx264':
-      ffmpeg_args += ['-preset', 'ultrafast', '-tune', 'zerolatency', '-crf', '30',
-                      '-g', str(MIRROR_FPS * 2), '-pix_fmt', 'yuv420p']
-    ffmpeg_args += ['-b:v', MIRROR_BITRATE, '-maxrate', MIRROR_BITRATE,
-                    '-fflags', 'nobuffer', '-flush_packets', '1']
-    if MIRROR_URL.startswith('rtsp://'):
-      ffmpeg_args += ['-rtsp_transport', 'tcp', '-f', 'rtsp', MIRROR_URL]
-    elif MIRROR_URL.startswith('hls://'):
-      hls_path = MIRROR_URL[len('hls://'):]
-      os.makedirs(os.path.dirname(hls_path) or '.', exist_ok=True)
-      ffmpeg_args += ['-f', 'hls', '-hls_time', '1', '-hls_list_size', '3',
-                      '-hls_flags', 'delete_segments+independent_segments+omit_endlist',
-                      hls_path]
-    else:
-      ffmpeg_args += ['-f', 'mpegts', MIRROR_URL]
+      ffmpeg_args += ['-preset', 'ultrafast', '-tune', 'zerolatency',
+                      '-pix_fmt', 'yuv420p',
+                      '-b:v', MIRROR_BITRATE, '-maxrate', MIRROR_BITRATE,
+                      '-bufsize', MIRROR_BITRATE]
 
-    # 上一轮还在收尾就等下一秒，绝不能让两个线程往同一个管道里写
+    if MIRROR_URL.startswith('hls://'):
+      # 默认路线：切成 HLS 片段放到 /tmp（内存盘，不磨损 eMMC），web_server.py 负责发出去
+      hls_path = MIRROR_URL[len('hls://'):]
+      try:
+        os.makedirs(os.path.dirname(hls_path) or '.', exist_ok=True)
+      except Exception:
+        pass
+      ffmpeg_args += ['-f', 'hls',
+                      '-hls_time', '1',
+                      '-hls_list_size', '3',
+                      '-hls_flags', 'delete_segments+independent_segments+omit_endlist',
+                      '-hls_segment_type', 'mpegts',
+                      hls_path]
+    elif MIRROR_URL.startswith('rtsp://'):
+      ffmpeg_args += ['-b:v', MIRROR_BITRATE, '-maxrate', MIRROR_BITRATE,
+                      '-rtsp_transport', 'tcp', '-f', 'rtsp', MIRROR_URL]
+    else:
+      ffmpeg_args += ['-b:v', MIRROR_BITRATE, '-maxrate', MIRROR_BITRATE,
+                      '-fflags', 'nobuffer', '-flush_packets', '1',
+                      '-f', 'mpegts', MIRROR_URL]
+
+    # 上一轮还在收尾就不重复启动，绝不能让两个线程往同一个管道里写。
+    # 注意：只有"旧进程还活着"才算在收尾 —— ffmpeg 意外退出时它的写线程会一直卡在
+    # 队列上不退出，只看 is_alive() 会把重启永久拦住。
+    old_proc = getattr(self, "_ffmpeg_proc", None)
     old_thread = getattr(self, "_ffmpeg_thread", None)
-    if old_thread is not None and old_thread.is_alive():
+    if old_thread is not None and old_thread.is_alive() and old_proc is not None and old_proc.poll() is None:
       return
 
     try:
@@ -499,6 +516,14 @@ class GuiApplication(GuiApplicationExt):
 
     proc = getattr(self, "_ffmpeg_proc", None)
     running = proc is not None and proc.poll() is None
+
+    # ffmpeg 自己挂了（写不了文件、参数不对……）就把残留收干净，下一轮再重来。
+    # 不收的话写线程会一直挂着，_start_ui_mirror 的保护会永久拦住重启。
+    if proc is not None and not running:
+      cloudlog.error(f"ui mirror: ffmpeg exited (rc={proc.returncode}), will retry")
+      self._stop_ui_mirror()
+      return
+
     if ui_mirror_enabled():
       if not running:
         self._start_ui_mirror()
@@ -775,7 +800,8 @@ class GuiApplication(GuiApplicationExt):
           self._last_mouse_event = self._mouse_events[-1]
 
         # Skip rendering when screen is off
-        if not self._should_render:
+        # ui mirror: 镜像开着的时候例外 —— 屏幕灭了也要继续渲染，否则车机上跟着一起黑
+        if not self._should_render and not ui_mirror_enabled():
           if PC:
             rl.poll_input_events()
           time.sleep(1 / self._target_fps)

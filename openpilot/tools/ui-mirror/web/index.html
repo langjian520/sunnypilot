@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<title>openpilot 画面镜像</title>
+<style>
+  html,body{margin:0;height:100%;background:#0b0b0d;color:#c8c8cc;overflow:hidden;
+    font-family:-apple-system,BlinkMacSystemFont,"Noto Sans SC","Microsoft YaHei",sans-serif}
+  #wrap{position:relative;height:100%;display:flex;align-items:center;justify-content:center}
+  video{width:100%;height:100%;object-fit:contain;background:#000;outline:none}
+  #hint{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    text-align:center;font-size:15px;line-height:2;pointer-events:none;
+    transition:opacity .5s ease;opacity:1;text-shadow:0 1px 3px #000}
+  #hint b{font-size:18px;color:#e8e8ea}
+  #hint.dim{opacity:0}
+  #bar{position:absolute;left:0;right:0;bottom:0;padding:6px 12px;font-size:12px;
+    color:#6e6e74;display:flex;justify-content:space-between;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <video id="v" playsinline autoplay muted controls></video>
+  <div id="hint">
+    <b>等待 openpilot 画面…</b><br>
+    如果一直没动静，请在设备上打开：<br>
+    设置 &rarr; 设备 &rarr; 画面镜像到车机
+  </div>
+  <div id="bar"><span id="st">连接中</span><span id="host"></span></div>
+</div>
+<script src="hls.min.js"></script>
+<script>
+(function () {
+  var v = document.getElementById('v');
+  var hint = document.getElementById('hint');
+  var st = document.getElementById('st');
+  document.getElementById('host').textContent = location.host;
+
+  function ready() { hint.classList.add('dim'); st.textContent = '播放中'; }
+  function waiting(msg) { hint.classList.remove('dim'); st.textContent = msg; }
+
+  if (window.Hls && window.Hls.isSupported()) {
+    var hls = new window.Hls({
+      liveSyncDurationCount: 2,          // 只缓冲 2 个片段，压低延迟
+      liveMaxLatencyDurationCount: 4,
+      maxBufferLength: 6,
+      manifestLoadingMaxRetry: 1000000,  // 开关没开时一直等，别放弃
+      manifestLoadingRetryDelay: 1000,
+      levelLoadingMaxRetry: 1000000,
+      fragLoadingMaxRetry: 1000000
+    });
+    hls.loadSource('live.m3u8');
+    hls.attachMedia(v);
+    hls.on(window.Hls.Events.MANIFEST_PARSED, function () { v.play().catch(function () {}); });
+    hls.on(window.Hls.Events.FRAG_BUFFERED, ready);
+    hls.on(window.Hls.Events.ERROR, function (evt, data) {
+      if (data && data.fatal) {
+        waiting('流断开，自动重连…');
+        setTimeout(function () {
+          try { hls.loadSource('live.m3u8'); hls.startLoad(); } catch (e) {}
+        }, 1500);
+      }
+    });
+  } else if (v.canPlayType('application/vnd.apple.mpegurl')) {
+    // Safari / iOS 原生支持 HLS
+    v.src = 'live.m3u8';
+    v.addEventListener('loadedmetadata', function () { v.play().catch(function () {}); ready(); });
+  } else {
+    hint.innerHTML = '<b>这个浏览器不支持直播播放</b><br>可以用 VLC 打开：<br>' +
+      location.origin + '/live.m3u8';
+    st.textContent = '不支持';
+  }
+
+  v.addEventListener('playing', ready);
+  // 兜底：只要画面真的在动就把提示收起来
+  setInterval(function () {
+    if (!v.paused && v.readyState >= 2 && v.currentTime > 0) ready();
+  }, 1000);
+})();
+</script>
+</body>
+</html>

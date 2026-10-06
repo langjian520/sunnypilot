@@ -1,0 +1,11 @@
+[Unit]
+Description=Check that the openpilot UI mirror patch is still in place
+
+[Timer]
+# 开机 2 分钟后先跑一次，之后每 5 分钟一次
+OnBootSec=2min
+OnUnitActiveSec=5min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

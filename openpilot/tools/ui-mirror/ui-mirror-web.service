@@ -1,0 +1,19 @@
+[Unit]
+Description=openpilot UI mirror - HLS web server
+Documentation=https://github.com/langjian520/sunnypilot/tree/staging-ui-mirror
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /data/ui-mirror/web_server.py
+Restart=always
+RestartSec=3
+Nice=5
+# 视频转发不吃 CPU，但别和 openpilot 抢调度
+IOSchedulingClass=idle
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
