@@ -3,79 +3,168 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <title>openpilot 画面镜像</title>
 <style>
   html,body{margin:0;height:100%;background:#0b0b0d;color:#c8c8cc;overflow:hidden;
     font-family:-apple-system,BlinkMacSystemFont,"Noto Sans SC","Microsoft YaHei",sans-serif}
   #wrap{position:relative;height:100%;display:flex;align-items:center;justify-content:center}
-  video{width:100%;height:100%;object-fit:contain;background:#000;outline:none}
+  #v,#hv{width:100%;height:100%;object-fit:contain;background:#000;outline:none;
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+  #hv{display:none}
   #hint{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
     text-align:center;font-size:15px;line-height:2;pointer-events:none;
     transition:opacity .5s ease;opacity:1;text-shadow:0 1px 3px #000}
   #hint b{font-size:18px;color:#e8e8ea}
   #hint.dim{opacity:0}
   #bar{position:absolute;left:0;right:0;bottom:0;padding:6px 12px;font-size:12px;
-    color:#6e6e74;display:flex;justify-content:space-between;pointer-events:none}
+    color:#6e6e74;display:flex;justify-content:space-between;gap:12px;pointer-events:none}
+  #mode{color:#4a7a5e}
 </style>
 </head>
 <body>
 <div id="wrap">
-  <video id="v" playsinline autoplay muted controls></video>
+  <img id="v" alt="">
+  <video id="hv" playsinline autoplay muted></video>
   <div id="hint">
     <b>等待 openpilot 画面…</b><br>
     如果一直没动静，请在设备上打开：<br>
     设置 &rarr; 设备 &rarr; 画面镜像到车机
   </div>
-  <div id="bar"><span id="st">连接中</span><span id="host"></span></div>
+  <div id="bar">
+    <span id="st">连接中</span>
+    <span id="mode"></span>
+    <span id="host"></span>
+  </div>
 </div>
-<script src="hls.min.js"></script>
 <script>
 (function () {
-  var v = document.getElementById('v');
+  var img  = document.getElementById('v');
+  var vid  = document.getElementById('hv');
   var hint = document.getElementById('hint');
-  var st = document.getElementById('st');
+  var st   = document.getElementById('st');
+  var modeEl = document.getElementById('mode');
   document.getElementById('host').textContent = location.host;
 
-  function ready() { hint.classList.add('dim'); st.textContent = '播放中'; }
+  var mode = 'mjpeg';
+  var timer = null;
+
+  function ready() { hint.classList.add('dim'); }
   function waiting(msg) { hint.classList.remove('dim'); st.textContent = msg; }
 
-  if (window.Hls && window.Hls.isSupported()) {
-    var hls = new window.Hls({
-      liveSyncDurationCount: 2,          // 只缓冲 2 个片段，压低延迟
-      liveMaxLatencyDurationCount: 4,
-      maxBufferLength: 6,
-      manifestLoadingMaxRetry: 1000000,  // 开关没开时一直等，别放弃
-      manifestLoadingRetryDelay: 1000,
-      levelLoadingMaxRetry: 1000000,
-      fragLoadingMaxRetry: 1000000
-    });
-    hls.loadSource('live.m3u8');
-    hls.attachMedia(v);
-    hls.on(window.Hls.Events.MANIFEST_PARSED, function () { v.play().catch(function () {}); });
-    hls.on(window.Hls.Events.FRAG_BUFFERED, ready);
-    hls.on(window.Hls.Events.ERROR, function (evt, data) {
-      if (data && data.fatal) {
-        waiting('流断开，自动重连…');
-        setTimeout(function () {
-          try { hls.loadSource('live.m3u8'); hls.startLoad(); } catch (e) {}
-        }, 1500);
-      }
-    });
-  } else if (v.canPlayType('application/vnd.apple.mpegurl')) {
-    // Safari / iOS 原生支持 HLS
-    v.src = 'live.m3u8';
-    v.addEventListener('loadedmetadata', function () { v.play().catch(function () {}); ready(); });
-  } else {
-    hint.innerHTML = '<b>这个浏览器不支持直播播放</b><br>可以用 VLC 打开：<br>' +
-      location.origin + '/live.m3u8';
-    st.textContent = '不支持';
+  // ---------------------------------------------------------------- MJPEG
+  // 每帧独立 JPEG，浏览器 <img> 直接吃 multipart/x-mixed-replace 流。
+  // 没有切片、没有播放缓冲，端到端只有几百毫秒。
+  function startMjpeg() {
+    mode = 'mjpeg';
+    modeEl.textContent = '低延迟 MJPEG';
+    waiting('连接中');
+    img.src = 'stream.mjpeg?t=' + Date.now();
+
+    // 兜底：少数浏览器（Safari）不认 multipart 图片，会一直转圈也不报错。
+    // 8 秒还没解码出宽度就说明是这种情况 —— 有 HLS 切片就切过去，没有就直说。
+    clearTimeout(timer);
+    timer = setTimeout(function () {
+      if (img.naturalWidth !== 0) return;      // 已经出图了，虚惊一场
+      fetch('live.m3u8', { method: 'HEAD', cache: 'no-store' })
+        .then(function (r) { if (r.ok) startHls(); else showVlcHint(); })
+        .catch(showVlcHint);
+    }, 8000);
   }
 
-  v.addEventListener('playing', ready);
-  // 兜底：只要画面真的在动就把提示收起来
-  setInterval(function () {
-    if (!v.paused && v.readyState >= 2 && v.currentTime > 0) ready();
-  }, 1000);
+  // 浏览器既不认 MJPEG 又没开 HLS 通道时的最后一条路：直接甩地址给 VLC
+  function showVlcHint() {
+    clearTimeout(timer);
+    mode = 'none';
+    img.removeAttribute('src');
+    st.textContent = '这个浏览器不支持';
+    modeEl.textContent = '';
+    hint.innerHTML = '<b>这个浏览器放不了实时画面</b><br>' +
+      '用 VLC 打开下面这个地址就行：<br>' +
+      '<span style="color:#e8e8ea">' + location.origin + '/stream.mjpeg</span>';
+  }
+
+  img.addEventListener('load', function () {
+    clearTimeout(timer);
+    st.textContent = '播放中';
+    ready();
+  });
+
+  img.addEventListener('error', function () {
+    // 流断开（开关被关掉、设备重启、网络抖）—— 一秒后重连，一直等
+    if (mode !== 'mjpeg') return;
+    clearTimeout(timer);
+    waiting('流断开，自动重连…');
+    setTimeout(startMjpeg, 1000);
+  });
+
+  // ---------------------------------------------------------------- HLS
+  // 兼容路线：老浏览器 / Safari 用，延迟高一些但谁都能放。
+  function startHls() {
+    mode = 'hls';
+    modeEl.textContent = '兼容模式 HLS';
+    img.removeAttribute('src');
+    img.style.display = 'none';
+
+    function attach() {
+      vid.style.display = '';
+      if (window.Hls && window.Hls.isSupported()) {
+        var hls = new window.Hls({
+          liveSyncDurationCount: 1,          // 贴着直播边缘播，压到最低延迟
+          liveMaxLatencyDurationCount: 2,
+          maxBufferLength: 2,
+          maxLiveSyncPlaybackRate: 1.5,      // 落后了就加速追
+          backBufferLength: 0,
+          manifestLoadingMaxRetry: 1000000,  // 开关没开时一直等，别放弃
+          manifestLoadingRetryDelay: 1000,
+          levelLoadingMaxRetry: 1000000,
+          fragLoadingMaxRetry: 1000000
+        });
+        hls.loadSource('live.m3u8');
+        hls.attachMedia(vid);
+        hls.on(window.Hls.Events.MANIFEST_PARSED, function () {
+          vid.play().catch(function () {});
+        });
+        hls.on(window.Hls.Events.FRAG_BUFFERED, function () {
+          st.textContent = '播放中';
+          ready();
+        });
+        hls.on(window.Hls.Events.ERROR, function (evt, data) {
+          if (data && data.fatal) {
+            waiting('流断开，自动重连…');
+            setTimeout(function () {
+              try { hls.loadSource('live.m3u8'); hls.startLoad(); } catch (e) {}
+            }, 1500);
+          }
+        });
+      } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
+        vid.src = 'live.m3u8';   // Safari 原生就能放 HLS
+        vid.addEventListener('loadedmetadata', function () {
+          vid.play().catch(function () {});
+          st.textContent = '播放中';
+          ready();
+        });
+      } else {
+        hint.innerHTML = '<b>这个浏览器不支持直播播放</b><br>可以用 VLC 打开：<br>' +
+          location.origin + '/stream.mjpeg';
+        st.textContent = '不支持';
+      }
+    }
+
+    if (window.Hls || vid.canPlayType('application/vnd.apple.mpegurl')) {
+      attach();
+    } else {
+      var s = document.createElement('script');
+      s.src = 'hls.min.js';
+      s.onload = attach;
+      s.onerror = function () { waiting('兼容模式不可用'); };
+      document.head.appendChild(s);
+    }
+  }
+
+  vid.addEventListener('playing', function () { st.textContent = '播放中'; ready(); });
+
+  startMjpeg();
 })();
 </script>
 </body>

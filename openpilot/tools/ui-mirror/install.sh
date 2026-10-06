@@ -57,13 +57,21 @@ chown comma:comma "$HLS_DIR" "$PREFIX/params" 2>/dev/null || true
 
 # 注意：不能写成 ffmpeg ... | grep -q，grep 一匹配到就退出会让 ffmpeg 吃 SIGPIPE，
 # 配合 set -o pipefail 会被误判成失败。所以先把输出抓进变量再用 case 匹配。
+# 设备自带的 openpilot 精简版 ffmpeg 这三样全都没有，所以必须换完整版：
+#   mpjpeg + mjpeg 编码器 -> 低延迟主通道      hls + libx264 -> 兼容回退通道
+#   注意必须先把输出抓进变量再匹配：用管道接 grep -q 的话，grep 一命中就退出，
+#   ffmpeg 收到 SIGPIPE 被杀，配合 set -o pipefail 会被误判成"能力缺失"。
 ffmpeg_ok() {
   [ -x "$1" ] || return 1
-  local mux enc
+  local mux enc proto
   mux="$("$1" -hide_banner -muxers 2>/dev/null || true)"
+  case "$mux" in *' mpjpeg '*|*' mpjpeg'*) ;; *) return 1 ;; esac
   case "$mux" in *' hls '*) ;; *) return 1 ;; esac
   enc="$("$1" -hide_banner -encoders 2>/dev/null || true)"
+  case "$enc" in *mjpeg*) ;; *) return 1 ;; esac
   case "$enc" in *libx264*) ;; *) return 1 ;; esac
+  proto="$("$1" -hide_banner -protocols 2>/dev/null || true)"
+  case "$proto" in *tcp*) ;; *) return 1 ;; esac
   return 0
 }
 
@@ -98,7 +106,7 @@ else
   [ -n "$SRC" ] || die "压缩包里没找到 ffmpeg 可执行文件"
   install -m 755 "$SRC" "$PREFIX/bin/ffmpeg"
   rm -rf "$TMPD"
-  ffmpeg_ok "$PREFIX/bin/ffmpeg" || die "装好的 ffmpeg 不满足要求（缺 hls 或 libx264）"
+  ffmpeg_ok "$PREFIX/bin/ffmpeg" || die "装好的 ffmpeg 不满足要求（缺 mpjpeg / mjpeg / hls / libx264 / tcp 里的某一项）"
   ok "ffmpeg -> $PREFIX/bin/ffmpeg（完整版）"
 fi
 
@@ -187,9 +195,11 @@ cat <<EOF
 
     http://$IP:$PORT/
 
-VLC 也可以打开网络串流：
+  默认是低延迟 MJPEG 通道，端到端约 0.3 秒，画面基本跟手。
 
-    http://$IP:$PORT/live.m3u8
+VLC 也可以打开网络串流（用同一个地址）：
+
+    http://$IP:$PORT/stream.mjpeg
 
 然后在设备上打开开关：
 
@@ -202,7 +212,9 @@ VLC 也可以打开网络串流：
     systemctl status $SERVICE                 # 网页服务
     systemctl status $SELFHEAL.timer          # 自愈定时器
     cat $PREFIX/selfheal.log                  # 自愈日志
-    ls -l $HLS_DIR                            # ffmpeg 有没有在切片
+    curl -s http://127.0.0.1:$PORT/health     # 上游连上没（connected=True 才对）
+    pgrep -af "$PREFIX/bin/ffmpeg"            # ffmpeg 在不在跑
+    ss -ltn | grep 8554                       # MJPEG 上游端口在不在听
     systemctl status comma.service            # openpilot 本体
 ---------------------------------------------------------------
 EOF

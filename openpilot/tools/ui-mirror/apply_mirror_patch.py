@@ -30,13 +30,16 @@
   MIRROR_FFMPEG=/data/ui-mirror/bin/ffmpeg    用哪个 ffmpeg。
         comma 自带的 /usr/local/venv/bin/ffmpeg 是 openpilot 精简构建，只认
         file/pipe 两种协议、没有 hls 封装器，所以必须用完整版（install.sh 会装）。
-  MIRROR_URL=hls:///tmp/ui_mirror/live.m3u8   输出目标（默认 HLS 切片）
-                 rtsp://127.0.0.1:8554/ui     有 RTSP 服务器时可用（延迟更低）
-                 udp://车机IP:1234             有播放器监听时可直接推
+  MIRROR_MODE=mjpeg                           输出方式：
+                 mjpeg = 每帧独立 JPEG，走本地 TCP 给 web_server，端到端 ~0.3 秒（默认）
+                 hls   = 切成切片，端到端 ~3 秒，好处是 VLC / Safari 都能直接放
+  MIRROR_TCP_PORT=8554                        mjpeg 模式：ffmpeg 监听的本地端口
+  MIRROR_QUALITY=6                            mjpeg 画质，2 最好 / 31 最省流量
+  MIRROR_SEG_SEC=0.5                          hls 模式：切片长度，越短延迟越低
   MIRROR_FPS=15                               推流帧率，UI 本身照旧 60fps
   MIRROR_SCALE=1.0                            画面缩放，压力大就调小
-  MIRROR_BITRATE=1200k
-  MIRROR_ENCODER=libx264                      或 h264_v4l2m2m（硬编，会和 openpilot 抢编码器，慎用）
+  MIRROR_BITRATE=1200k                        仅 hls 模式使用
+  MIRROR_ENCODER=libx264                      仅 hls 模式使用，或 h264_v4l2m2m（硬编，会和 openpilot 抢编码器，慎用）
   MIRROR_EXTRA_VF=                            画面方向不对时填 transpose=1 / hflip 等
 """
 
@@ -67,6 +70,10 @@ MIRROR_SCALE = float(os.getenv("MIRROR_SCALE", "1.0"))  # 画面缩放，负载�
 MIRROR_BITRATE = os.getenv("MIRROR_BITRATE", "1200k")
 MIRROR_ENCODER = os.getenv("MIRROR_ENCODER", "libx264")  # 或 h264_v4l2m2m（硬编，看设备是否支持）
 MIRROR_EXTRA_VF = os.getenv("MIRROR_EXTRA_VF", "")       # 画面方向不对时: transpose=1 或 hflip 等
+MIRROR_MODE = os.getenv("MIRROR_MODE", "mjpeg")          # mjpeg=低延迟(默认) / hls=兼容老浏览器
+MIRROR_TCP_PORT = int(os.getenv("MIRROR_TCP_PORT", "8554"))  # mjpeg 模式：ffmpeg 监听的本地端口
+MIRROR_QUALITY = int(os.getenv("MIRROR_QUALITY", "6"))   # mjpeg 画质：2 最好 / 31 最省流量
+MIRROR_SEG_SEC = float(os.getenv("MIRROR_SEG_SEC", "0.5"))  # hls 模式切片长度，越短延迟越低
 
 _ui_mirror_state = {"on": False, "checked": -1.0, "params": None}
 
@@ -108,6 +115,8 @@ METHODS_NEW = '''  def _start_ui_mirror(self):
     """按需起 ffmpeg：只有设置里的开关打开时才跑，关掉就整个收掉，不占 CPU。"""
     scale_filter = "" if MIRROR_SCALE == 1.0 else f",scale=iw*{MIRROR_SCALE}:ih*{MIRROR_SCALE}"
     extra_filter = "" if not MIRROR_EXTRA_VF else f",{MIRROR_EXTRA_VF}"
+    vf = f'vflip{scale_filter}{extra_filter}'
+
     ffmpeg_args = [
       MIRROR_FFMPEG,
       '-v', 'error',
@@ -117,37 +126,41 @@ METHODS_NEW = '''  def _start_ui_mirror(self):
       '-s', f'{self._scaled_width}x{self._scaled_height}',
       '-r', str(MIRROR_FPS),
       '-i', 'pipe:0',
-      '-vf', f'vflip{scale_filter}{extra_filter},format=yuv420p',
-      '-c:v', MIRROR_ENCODER,
-      # 每 MIRROR_FPS 帧一个关键帧 => 正好 1 秒一个 GOP，HLS 才能在片段边界干净切开
-      '-g', str(MIRROR_FPS),
     ]
-    if MIRROR_ENCODER == 'libx264':
-      ffmpeg_args += ['-preset', 'ultrafast', '-tune', 'zerolatency',
-                      '-pix_fmt', 'yuv420p',
-                      '-b:v', MIRROR_BITRATE, '-maxrate', MIRROR_BITRATE,
-                      '-bufsize', MIRROR_BITRATE]
 
-    if MIRROR_URL.startswith('hls://'):
-      # 默认路线：切成 HLS 片段放到 /tmp（内存盘，不磨损 eMMC），web_server.py 负责发出去
-      hls_path = MIRROR_URL[len('hls://'):]
+    if MIRROR_MODE == 'mjpeg':
+      # 低延迟路线（默认）：每帧都是一张独立的 JPEG，没有任何帧间依赖，
+      # 编码器不用攒缓冲、播放端也不用等切片，端到端只有 ~0.3 秒。
+      # 输出到本地 TCP，web_server.py 连上来读，再转发给浏览器。
+      ffmpeg_args += ['-vf', f'{vf},format=yuvj420p',
+                      '-c:v', 'mjpeg',
+                      '-q:v', str(MIRROR_QUALITY),
+                      '-f', 'mpjpeg',
+                      '-flush_packets', '1',
+                      f'tcp://127.0.0.1:{MIRROR_TCP_PORT}?listen=1']
+    else:
+      # 兼容路线：切成 HLS 片段放到 /tmp（内存盘，不磨损 eMMC），VLC/Safari 都能放
+      hls_path = MIRROR_URL[len('hls://'):] if MIRROR_URL.startswith('hls://') else '/tmp/ui_mirror/live.m3u8'
       try:
         os.makedirs(os.path.dirname(hls_path) or '.', exist_ok=True)
       except Exception:
         pass
+      # 关键帧间隔跟切片长度对齐，HLS 才能在片段边界干净切开
+      gop = max(1, int(round(MIRROR_FPS * MIRROR_SEG_SEC)))
+      ffmpeg_args += ['-vf', f'{vf},format=yuv420p',
+                      '-c:v', MIRROR_ENCODER,
+                      '-g', str(gop)]
+      if MIRROR_ENCODER == 'libx264':
+        ffmpeg_args += ['-preset', 'ultrafast', '-tune', 'zerolatency',
+                        '-pix_fmt', 'yuv420p',
+                        '-b:v', MIRROR_BITRATE, '-maxrate', MIRROR_BITRATE,
+                        '-bufsize', MIRROR_BITRATE]
       ffmpeg_args += ['-f', 'hls',
-                      '-hls_time', '1',
+                      '-hls_time', str(MIRROR_SEG_SEC),
                       '-hls_list_size', '3',
                       '-hls_flags', 'delete_segments+independent_segments+omit_endlist',
                       '-hls_segment_type', 'mpegts',
                       hls_path]
-    elif MIRROR_URL.startswith('rtsp://'):
-      ffmpeg_args += ['-b:v', MIRROR_BITRATE, '-maxrate', MIRROR_BITRATE,
-                      '-rtsp_transport', 'tcp', '-f', 'rtsp', MIRROR_URL]
-    else:
-      ffmpeg_args += ['-b:v', MIRROR_BITRATE, '-maxrate', MIRROR_BITRATE,
-                      '-fflags', 'nobuffer', '-flush_packets', '1',
-                      '-f', 'mpegts', MIRROR_URL]
 
     # 上一轮还在收尾就不重复启动，绝不能让两个线程往同一个管道里写。
     # 注意：只有"旧进程还活着"才算在收尾 —— ffmpeg 意外退出时它的写线程会一直卡在
