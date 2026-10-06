@@ -103,14 +103,13 @@ CPP_2_PYTHON = {
 def ensure_bytes(v):
   return v.encode() if isinstance(v, str) else v
 
-
-# prebuilt 设备上跑的 libparams_c.so 是在这些 key 出现之前编好的，而 launch_chffrplus.sh
-# 因为有 `prebuilt` 标记会跳过 ./build.py，所以原生 key 表里查不到它们。
-# params 的存储本身是按文件名来的（就是 /data/params/ 下的一个文件），与 key 无关，
+# prebuilt 设备上跑的 libparams_c.so 是在 UiMirrorEnabled 出现之前编好的，
+# 而 launch_chffrplus.sh 因为有 `prebuilt` 标记会跳过 ./build.py，所以原生 key 表里查不到。
+# params 的存储本身就是按文件名来的（/data/params/ 下一个 key 一个文件），与这张表无关，
 # 所以在这里放行，省得每次更新完还得在设备上重编 native 代码。
 _KEYS_UNKNOWN_TO_PREBUILT_LIBPARAMS = {
-    b"SunnyconfPairingCode",   # sunnyconf pairing
     b"UiMirrorEnabled",        # ui mirror toggle (openpilot/tools/ui-mirror)
+    b"SunnyconfPairingCode",   # sunnyconf 自带
 }
 
 
@@ -140,7 +139,13 @@ class Params:
 
   def check_key(self, key):
     key = ensure_bytes(key)
-    # see _KEYS_UNKNOWN_TO_PREBUILT_LIBPARAMS above
+    # sunnyconf: SunnyconfPairingCode is declared in params_keys.h, but this device runs the release
+    # build whose libparams_c.so was compiled before the key existed, and launch_chffrplus.sh skips
+    # ./build.py because the `prebuilt` marker is present — so the native table has no entry for it.
+    # Storage itself is key-agnostic (a param is just a file under /data/params/), so allow this one
+    # key here instead of rebuilding native code on the device after every update.
+    if key == b"SunnyconfPairingCode":
+      return key
     if key in _KEYS_UNKNOWN_TO_PREBUILT_LIBPARAMS:
       return key
     if b"\0" in key or not params_check_key(self.p, key):

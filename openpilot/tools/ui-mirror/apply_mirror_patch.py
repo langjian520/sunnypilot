@@ -36,6 +36,8 @@ import sys
 from pathlib import Path
 
 DEFAULT_TARGET = "/data/openpilot/openpilot/system/ui/lib/application.py"
+# UI 装在 /data/openpilot 下，仓库根目录
+DEFAULT_BASEDIR = "/data/openpilot"
 MARKER = "# --- ui mirror (added by apply_mirror_patch.py) ---"
 
 # ---------------------------------------------------------------- 补丁片段
@@ -234,10 +236,119 @@ EDITS = [
     ("取帧与丢帧保护", GRAB_OLD, GRAB_NEW),
 ]
 
+# ---------------------------------------------- 另外两个文件：开关本身 + 参数注册
+
+PARAMS_OLD = '''def ensure_bytes(v):
+  return v.encode() if isinstance(v, str) else v
+'''
+
+PARAMS_NEW = PARAMS_OLD + '''
+# prebuilt 设备上跑的 libparams_c.so 是在 UiMirrorEnabled 出现之前编好的，
+# 而 launch_chffrplus.sh 因为有 `prebuilt` 标记会跳过 ./build.py，所以原生 key 表里查不到。
+# params 的存储本身就是按文件名来的（/data/params/ 下一个 key 一个文件），与这张表无关，
+# 所以在这里放行，省得每次更新完还得在设备上重编 native 代码。
+_KEYS_UNKNOWN_TO_PREBUILT_LIBPARAMS = {
+    b"UiMirrorEnabled",        # ui mirror toggle (openpilot/tools/ui-mirror)
+    b"SunnyconfPairingCode",   # sunnyconf 自带
+}
+'''
+
+PARAMS_CHECK_OLD = '''    if b"\\0" in key or not params_check_key(self.p, key):
+      raise UnknownKeyName(key)'''
+
+PARAMS_CHECK_NEW = '''    if key in _KEYS_UNKNOWN_TO_PREBUILT_LIBPARAMS:
+      return key
+    if b"\\0" in key or not params_check_key(self.p, key):
+      raise UnknownKeyName(key)'''
+
+DEVICE_IMPORT_OLD = "from openpilot.selfdrive.ui.mici.widgets.button import BigButton, BigCircleButton\n"
+DEVICE_IMPORT_NEW = "from openpilot.selfdrive.ui.mici.widgets.button import BigButton, BigCircleButton, BigParamControl\n"
+
+DEVICE_LIST_OLD = "    self._scroller.add_widgets([\n"
+DEVICE_LIST_NEW = '''    # ui-mirror: 把完整 UI 画面推到车机大屏，服务端见 openpilot/tools/ui-mirror/
+    ui_mirror_toggle = BigParamControl("ui mirror", "UiMirrorEnabled")
+
+''' + DEVICE_LIST_OLD
+
+DEVICE_ROW_OLD = '''      cabin_cam_btn,
+      terms_btn,'''
+DEVICE_ROW_NEW = '''      cabin_cam_btn,
+      ui_mirror_toggle,
+      terms_btn,'''
+
+# (相对仓库根目录的路径, [(说明, old, new), ...])
+EXTRA_FILES = [
+    ("openpilot/common/params.py", [
+        ("参数注册", PARAMS_OLD, PARAMS_NEW),
+        ("check_key 放行", PARAMS_CHECK_OLD, PARAMS_CHECK_NEW),
+    ]),
+    ("openpilot/selfdrive/ui/mici/layouts/settings/device.py", [
+        ("import 开关组件", DEVICE_IMPORT_OLD, DEVICE_IMPORT_NEW),
+        ("创建开关", DEVICE_LIST_OLD, DEVICE_LIST_NEW),
+        ("放进设置列表", DEVICE_ROW_OLD, DEVICE_ROW_NEW),
+    ]),
+]
+
+
+def try_compile(src: str, name: str) -> str | None:
+  """语法自检，返回错误信息（没问题则返回 None）。"""
+  try:
+    compile(src, name, "exec")
+  except SyntaxError as e:
+    return f"{e}\n  line {e.lineno}: {e.text}"
+  return None
+
+
+def patch_extra_files(basedir: str) -> None:
+  """顺手把「设置页开关」和「参数注册」也补上。
+
+  这两个文件不是必须有（比如跑的不是 comma four 的 UI），所以失败只警告，不影响主补丁。
+  """
+  root = Path(basedir)
+  if not root.exists():
+    print(f"\n[!] 找不到仓库目录 {basedir}，跳过设置页开关的安装")
+    print("    开关就用不了了，改成 MIRROR=1 常开同样能用（见 README）")
+    return
+
+  print()
+  for rel, edits in EXTRA_FILES:
+    target = root / rel
+    if not target.exists():
+      print(f"[!] 跳过 {rel}（文件不存在，版本不同？）")
+      continue
+
+    src = target.read_bytes().decode("utf-8")
+    if "UiMirrorEnabled" in src:
+      print(f"[✓] {rel} 已经带开关了")
+      continue
+
+    changed = 0
+    for name, old, new in edits:
+      if src.count(old) != 1:
+        print(f"[!] {rel} 的「{name}」没改成功（匹配 {src.count(old)} 次，需要正好 1 次）")
+        continue
+      src = src.replace(old, new, 1)
+      changed += 1
+
+    if not changed:
+      continue
+
+    err = try_compile(src, rel)
+    if err:
+      print(f"[!] {rel} 改完语法检查没过，跳过：{err}")
+      continue
+
+    backup = target.with_suffix(target.suffix + ".mirror.bak")
+    if not backup.exists():
+      shutil.copy2(target, backup)
+    target.write_bytes(src.encode("utf-8"))
+    print(f"[✓] 已更新 {rel}（备份 -> {backup}）")
+
 
 def main() -> int:
   parser = argparse.ArgumentParser(description="给 openpilot UI 打 UI-mirror 补丁")
   parser.add_argument("target", nargs="?", default=DEFAULT_TARGET, help="application.py 路径")
+  parser.add_argument("--basedir", default=DEFAULT_BASEDIR, help="openpilot 仓库根目录（用于装设置页开关）")
   parser.add_argument("--uninstall", action="store_true", help="从备份恢复原文件")
   args = parser.parse_args()
 
@@ -261,7 +372,8 @@ def main() -> int:
   src = target.read_bytes().decode("utf-8")
 
   if MARKER in src:
-    print(f"[✓] 看起来已经打过补丁了（文件里已有 ui mirror 标记），无需重复执行。")
+    print(f"[✓] application.py 已经打过补丁了，跳过。")
+    patch_extra_files(args.basedir)
     return 0
 
   if not backup.exists():
@@ -296,8 +408,12 @@ def main() -> int:
     return 3
 
   target.write_bytes(src.encode("utf-8"))
-  print(f"\n[✓] 补丁完成: {target}")
-  print("    接下来: 设置 → 设备 → ui mirror 打开即可（或重启 openpilot）")
+  print(f"\n[✓] UI 补丁完成: {target}")
+
+  # 设置页的开关（comma four = mici UI）
+  patch_extra_files(args.basedir)
+
+  print("\n    接下来把开关打开就行：设置 → 设备 → ui mirror（或重启一次 openpilot）")
   return 0
 
 

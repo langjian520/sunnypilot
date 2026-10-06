@@ -214,7 +214,7 @@ class DeviceLayoutMici(NavScroller):
       gui_app.push_widget(BigInputDialog("enter pairing code...", cur, minimum_length=0, confirm_callback=_save))
     pairing_code_btn.set_click_callback(_open_pairing_code)
 
-    # ui-mirror: 把完整 UI 画面推到车机大屏。服务端见 openpilot/tools/ui-mirror/
+    # ui-mirror: 把完整 UI 画面推到车机大屏，服务端见 openpilot/tools/ui-mirror/
     ui_mirror_toggle = BigParamControl("ui mirror", "UiMirrorEnabled")
 
     self._scroller.add_widgets([
