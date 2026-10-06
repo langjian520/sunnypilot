@@ -48,6 +48,16 @@ RECORD_BITRATE = os.getenv("RECORD_BITRATE", "")  # Target bitrate e.g. "2000k" 
 RECORD_SPEED = int(os.getenv("RECORD_SPEED", "1"))  # Speed multiplier
 OFFSCREEN = os.getenv("OFFSCREEN") == "1"  # Disable FPS limiting for fast offline rendering
 
+# --- ui mirror (added by apply_mirror_patch.py) ---
+MIRROR = os.getenv("MIRROR") == "1"                      # 开关
+MIRROR_URL = os.getenv("MIRROR_URL", "rtsp://127.0.0.1:8554/ui")
+MIRROR_FPS = int(os.getenv("MIRROR_FPS", "15"))          # 推流帧率，UI 本身仍是 60fps
+MIRROR_SCALE = float(os.getenv("MIRROR_SCALE", "1.0"))   # 画面缩放，负载高就调小
+MIRROR_BITRATE = os.getenv("MIRROR_BITRATE", "1200k")
+MIRROR_ENCODER = os.getenv("MIRROR_ENCODER", "libx264")  # 或 h264_v4l2m2m（硬编，看设备是否支持）
+MIRROR_EXTRA_VF = os.getenv("MIRROR_EXTRA_VF", "")       # 画面方向不对时: transpose=1 或 hflip 等
+# --- end ui mirror ---
+
 GL_VERSION = """
 #version 300 es
 precision highp float;
@@ -304,7 +314,7 @@ class GuiApplication(GuiApplicationExt):
 
       rl.init_window(self._scaled_width, self._scaled_height, title)
 
-      needs_render_texture = self._scale != 1.0 or BURN_IN_MODE or RECORD
+      needs_render_texture = self._scale != 1.0 or BURN_IN_MODE or RECORD or MIRROR
       if self._scale != 1.0:
         rl.set_mouse_scale(1 / self._scale, 1 / self._scale)
       if needs_render_texture:
@@ -338,6 +348,43 @@ class GuiApplication(GuiApplicationExt):
         ]
         self._ffmpeg_proc = subprocess.Popen(ffmpeg_args, stdin=subprocess.PIPE)
         self._ffmpeg_queue = queue.Queue(maxsize=60)  # Buffer up to 60 frames
+        self._ffmpeg_stop_event = threading.Event()
+        self._ffmpeg_thread = threading.Thread(target=self._ffmpeg_writer_thread, daemon=True)
+        self._ffmpeg_thread.start()
+
+      elif MIRROR:
+        scale_filter = "" if MIRROR_SCALE == 1.0 else f",scale=iw*{MIRROR_SCALE}:ih*{MIRROR_SCALE}"
+        extra_filter = "" if not MIRROR_EXTRA_VF else f",{MIRROR_EXTRA_VF}"
+        ffmpeg_args = [
+          'ffmpeg',
+          '-v', 'warning',
+          '-nostats',
+          '-f', 'rawvideo',
+          '-pix_fmt', 'rgba',
+          '-s', f'{self._scaled_width}x{self._scaled_height}',
+          '-r', str(MIRROR_FPS),
+          '-i', 'pipe:0',
+          '-vf', f'vflip{scale_filter}{extra_filter},format=yuv420p',
+          '-c:v', MIRROR_ENCODER,
+        ]
+        if MIRROR_ENCODER == 'libx264':
+          ffmpeg_args += ['-preset', 'ultrafast', '-tune', 'zerolatency', '-crf', '30',
+                          '-g', str(MIRROR_FPS * 2), '-pix_fmt', 'yuv420p']
+        ffmpeg_args += ['-b:v', MIRROR_BITRATE, '-maxrate', MIRROR_BITRATE,
+                        '-fflags', 'nobuffer', '-flush_packets', '1']
+        if MIRROR_URL.startswith('rtsp://'):
+          ffmpeg_args += ['-rtsp_transport', 'tcp', '-f', 'rtsp', MIRROR_URL]
+        elif MIRROR_URL.startswith('hls://'):
+          # 不装 mediamtx 时的备选：直接切片到目录，再用 python -m http.server 发出去
+          hls_path = MIRROR_URL[len('hls://'):]
+          os.makedirs(os.path.dirname(hls_path) or '.', exist_ok=True)
+          ffmpeg_args += ['-f', 'hls', '-hls_time', '1', '-hls_list_size', '3',
+                          '-hls_flags', 'delete_segments+independent_segments+omit_endlist',
+                          hls_path]
+        else:
+          ffmpeg_args += ['-f', 'mpegts', MIRROR_URL]
+        self._ffmpeg_proc = subprocess.Popen(ffmpeg_args, stdin=subprocess.PIPE)
+        self._ffmpeg_queue = queue.Queue(maxsize=30)
         self._ffmpeg_stop_event = threading.Event()
         self._ffmpeg_thread = threading.Thread(target=self._ffmpeg_writer_thread, daemon=True)
         self._ffmpeg_thread.start()
@@ -688,12 +735,19 @@ class GuiApplication(GuiApplicationExt):
 
         rl.end_drawing()
 
-        if RECORD:
-          image = rl.load_image_from_texture(self._render_texture.texture)
-          data_size = image.width * image.height * 4
-          data = bytes(rl.ffi.buffer(image.data, data_size))
-          self._ffmpeg_queue.put(data)  # Async write via background thread
-          rl.unload_image(image)
+        if RECORD or MIRROR:
+          # 推流时按需抽帧，避免每帧回读 GPU 拖垮 UI
+          interval = 1 if RECORD else max(1, int(round(self._target_fps / max(1, MIRROR_FPS))))
+          if self._frame % interval == 0:
+            image = rl.load_image_from_texture(self._render_texture.texture)
+            data_size = image.width * image.height * 4
+            data = bytes(rl.ffi.buffer(image.data, data_size))
+            try:
+              # 推流慢或对方没连上就丢帧，绝不能阻塞渲染循环
+              self._ffmpeg_queue.put_nowait(data)
+            except queue.Full:
+              pass
+            rl.unload_image(image)
 
         self._monitor_fps()
         self._frame += 1
