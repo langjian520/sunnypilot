@@ -814,6 +814,12 @@ class GuiApplication(GuiApplicationExt):
         if not self._should_render and not ui_mirror_enabled():
           if PC:
             rl.poll_input_events()
+          # ui mirror: 这一支在 yield 之前就 continue 了，后面取帧那一段的
+          # _update_ui_mirror() 永远轮不到。少了这一句，就会出现：
+          # 屏幕关着的时候把开关关掉 -> ffmpeg 收不到停止信号 -> 一直挂在后台烧 CPU
+          #（实测约半个核）。补一次调用，它会看到开关已关，把 ffmpeg 收干净。
+          if MIRROR_AVAILABLE:
+            self._update_ui_mirror()
           time.sleep(1 / self._target_fps)
           yield False, 0.0, 0.0
           continue

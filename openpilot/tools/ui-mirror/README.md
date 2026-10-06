@@ -5,9 +5,11 @@
 
 ```
 openpilot UI 渲染 ─► GL 纹理 ─►(抽帧回读)─► ffmpeg ─► MJPEG ─► 内置 HTTP 服务 ─► 车机浏览器
-   60 fps           536x240      15 fps     mjpeg    本地 TCP      :8000         <img> 直接显示
+   60 fps           536x240     ~24 fps     mjpeg    本地 TCP      :8000         <img> 直接显示
                                                 每帧独立 JPEG，端到端约 0.1 秒
 ```
+
+抽帧倍率由 `MIRROR_FPS` 控制，默认 30（实际跑到 ~24，见「帧率」一节）。
 
 设备上什么都不用装，**浏览器打开一个网址就行**：
 
@@ -25,7 +27,7 @@ http://<设备IP>:8000/
 |---|---|---|
 | 首帧到达 | 2–3 秒 | **32 ms**（跨网络）/ 1 ms（本机） |
 | 稳定播放前的等待 | 攒切片 + 播放器缓冲 | 无 |
-| 帧间隔 | 1 秒一个切片 | 66.5 ms（正好 1/15 s） |
+| 帧间隔 | 1 秒一个切片 | 约 40 ms |
 | 端到端延迟 | **约 3 秒** | **约 0.1 秒** |
 
 差别来自协议本身，不是调参能救的：
@@ -38,6 +40,29 @@ http://<设备IP>:8000/
 
 所以默认走 MJPEG。**如果车机浏览器不认 MJPEG**（Safari/iOS 就不认），
 网页会自动去查有没有 HLS 切片，有就切过去，没有就直接把 VLC 地址甩给你。
+
+---
+
+## 帧率
+
+`MIRROR_FPS` 是**目标**帧率，不是保证值。抽帧是「每 N 帧取 1 帧」，
+`N = round(60 / MIRROR_FPS)`，所以只有 60、30、20、15、12…… 这几档是整的：
+
+| `MIRROR_FPS` | 抽帧倍率 | 实测帧率 | UI 进程 | ffmpeg | 合计 |
+|---|---|---|---|---|---|
+| 15 | 每 4 帧取 1 | 15.0 fps | 40 % | 20 % | 0.6 核 |
+| 20 | 每 3 帧取 1 | 19.9 fps | 40 % | 30 % | 0.7 核 |
+| **30（默认）** | 每 2 帧取 1 | **约 24 fps** | 50 % | 40 % | 0.9 核 |
+
+（comma four，4 核，百分比是「单个核」的占用）
+
+**注意 30 这一档达不到 30。** 回读要用 `glReadPixels` 把 GPU 画面拷回 CPU，
+这个操作会阻塞渲染管线；每 2 帧拷一次时 UI 自己的渲染循环从 60fps 掉到约 48fps，
+于是推流也跟着掉到 24fps 左右。偶尔还会有一两百毫秒的顿挫。
+想要稳就退到 20 —— 那一档是干净的 19.9fps，UI 侧开销也更低。
+
+**代价对比**：镜像关掉时 UI 约 10 %。所以打开 30 帧等于多花约 0.9 个核（4 核里的 22 %）。
+行车时 modeld 等进程也在抢 CPU，实测可以，但发热和降频风险自己掂量。
 
 ---
 
@@ -82,15 +107,16 @@ cd /data/ui-mirror-install/src
 sudo bash install.sh
 ```
 
-脚本会依次做五件事：
+脚本会依次做六件事：
 
 1. 装一份**完整版 ffmpeg** 到 `/data/ui-mirror/bin/`
    （comma 自带的 `/usr/local/venv/bin/ffmpeg` 是 openpilot 精简构建，
    只编了 `file,pipe` 协议，既没有 `mpjpeg` 也没有 `hls` 封装器，**发不出去**）
 2. 装网页服务，注册为开机自启的 systemd 服务 `ui-mirror-web`
-3. 给 openpilot 打补丁
-4. 装补丁自愈定时器 `ui-mirror-selfheal.timer`
-5. 重启 openpilot 让补丁生效
+3. 写可调参数 `/data/ui-mirror/mirror.env`（已存在就不动，尊重你的改动）
+4. 给 openpilot 打补丁
+5. 装补丁自愈定时器 `ui-mirror-selfheal.timer`
+6. 重启 openpilot 让补丁生效
 
 装完浏览器打开 `http://<设备IP>:8000/` 即可。
 
@@ -112,7 +138,7 @@ VLC 之类的播放器也可以直接打开 `http://<设备IP>:8000/stream.mjpeg
 
 ---
 
-## 三个不明显的坑（都已在代码里处理）
+## 四个不明显的坑（都已在代码里处理）
 
 ### 1. 开关会被 openpilot 自己删掉
 
@@ -182,29 +208,45 @@ run(["git", "reset", "--hard"], FINALIZED)          # ← 本地改动在这一�
 
 日志在 `/data/ui-mirror/selfheal.log`。
 
+### 4. 屏幕关着的时候关开关，ffmpeg 会一直在后台烧 CPU
+
+第 2 条那个渲染门是 `if not self._should_render and not ui_mirror_enabled()`。
+反过来说：**屏幕关着 + 开关也关着**时，渲染循环会在 `yield` 之前就 `continue`，
+于是排在 `yield` 之后的 `_update_ui_mirror()` 永远轮不到 ——
+它才是唯一会去收 ffmpeg 的地方。
+
+现场表现：停车（屏幕已熄）时在设置里关掉开关 → 画面确实没了，但
+`pgrep ffmpeg` 还挂着一个进程，半个核一直空转，直到下次重启。
+
+**做法**：在那个 `continue` 分支里补一次 `self._update_ui_mirror()`，
+它会看到开关已关并把 ffmpeg 收干净。
+
 ---
 
 ## 调参
 
-想改行为就写一个 systemd drop-in：
+**别用 systemd drop-in**（这是踩过的坑）：`comma.service` 里跑的是
+`tmux new-session -s comma -d /usr/comma/comma.sh`，而 **tmux server 是长驻的**，
+新 session 继承的是 server 启动那一刻的环境。给 `comma.service` 加
+`Environment=` 后重启，改进程里 `grep` 一下就知道 —— 环境变量根本没进去。
+
+唯一每次启动都会重读的是 `launch_chffrplus.sh` 第 5 行的
+`source "$DIR/launch_env.sh"`，所以补丁往 `launch_env.sh` 末尾挂了一行，
+把下面这个文件 source 进来：
 
 ```bash
-sudo mount -o remount,rw /
-sudo mkdir -p /etc/systemd/system/comma.service.d
-sudo tee /etc/systemd/system/comma.service.d/ui-mirror.conf <<'EOF'
-[Service]
-Environment=MIRROR_FPS=10
-Environment=MIRROR_QUALITY=10
-EOF
-sudo systemctl daemon-reload
-sudo systemctl restart comma.service
+sudo nano /data/ui-mirror/mirror.env     # 改这里
+sudo systemctl restart comma.service     # 改完重启生效
 ```
+
+`/data/ui-mirror/` 不归 openpilot 更新管，所以参数不会被更新流程冲掉。
+（万一 `mirror.env` 真的丢了，代码里的兜底值是保守的 `MIRROR_FPS=15`，不会失控。）
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | `MIRROR` | 空 | `1` 强制常开并忽略设置里的开关；`0` 彻底关掉（连代码路径都不走） |
 | `MIRROR_MODE` | `mjpeg` | `mjpeg` = 低延迟（默认）；`hls` = 兼容老浏览器，延迟 ~3 秒 |
-| `MIRROR_FPS` | `15` | 推流帧率。UI 本身照旧 60fps，只有推流这段被抽帧 |
+| `MIRROR_FPS` | `30` | 推流**目标**帧率，实际能不能达到见「帧率」一节。UI 本身照旧 60fps |
 | `MIRROR_QUALITY` | `6` | MJPEG 画质，数字越大越省流量/CPU（2 最好，31 最糊） |
 | `MIRROR_SCALE` | `1.0` | 画面缩放。负载高就调到 `0.75` / `0.5` |
 | `MIRROR_TCP_PORT` | `8554` | MJPEG 上游端口。改这里要同时改 `ui-mirror-web.service` 的 `UI_MIRROR_TCP` |
@@ -240,7 +282,10 @@ curl -s localhost:8000/health               # connected=True 才算链路通
 | 画面方向不对 | 改 `MIRROR_EXTRA_VF`（默认管道里已带 `vflip`） |
 | 提示"这个浏览器放不了" | 该浏览器不认 MJPEG（Safari），照提示用 VLC 打开 `stream.mjpeg` |
 | 过几天突然不好使 | openpilot 更新冲掉了补丁 —— 看 `selfheal.log`，或重跑 `install.sh` |
-| 设备发烫 / 卡顿 | 调 `MIRROR_FPS=10`、`MIRROR_QUALITY=10`、`MIRROR_SCALE=0.75` |
+| 设备发烫 / 卡顿 | 把 `MIRROR_FPS` 降到 20 或 15，或 `MIRROR_QUALITY=10` |
+| 改了 `mirror.env` 没反应 | 没重启 openpilot，或那行忘了写 `export`。看 ffmpeg 命令行的 `-r` 确认 |
+| 关掉开关后 ffmpeg 还在跑 | 老版本的 bug（屏幕关着时收不到停止信号）。重跑 `install.sh` |
+| 画面偶尔顿一下 | 30 帧这一档在 comma four 上本来就到不了 30，退到 20 会稳很多 |
 
 ---
 
@@ -253,11 +298,12 @@ sudo rm -f /etc/systemd/system/ui-mirror-web.service \
            /etc/systemd/system/ui-mirror-selfheal.timer
 rm -f /data/openpilot/.git/.ui_mirror_devmode
 
-# 补丁回退（三个文件都有 .mirror.bak 备份）
+# 补丁回退（四个文件都有 .mirror.bak 备份）
 cd /data/openpilot
 cp openpilot/system/ui/lib/application.py.mirror.bak openpilot/system/ui/lib/application.py
 cp openpilot/common/params.py.mirror.bak openpilot/common/params.py
 cp openpilot/selfdrive/ui/mici/layouts/settings/device.py.mirror.bak openpilot/selfdrive/ui/mici/layouts/settings/device.py
+cp launch_env.sh.mirror.bak launch_env.sh
 
 sudo rm -rf /data/ui-mirror /data/ui-mirror-install
 sudo systemctl restart comma.service
@@ -276,8 +322,18 @@ sudo systemctl restart comma.service
 | `web/index.html` | 网页播放器（默认 MJPEG，8 秒没图就去看有没有 HLS，都没有就提示用 VLC） |
 | `ui-mirror-web.service` | 网页服务的 systemd unit |
 | `ui-mirror-selfheal.{service,timer}` | 自愈的 systemd unit |
+| `mirror.env`（安装时生成） | 可调参数（帧率/画质/模式），落在 `/data/ui-mirror/`，不被 openpilot 更新覆盖 |
 
 设备上的落点：程序和配置在 `/data/ui-mirror/`，systemd unit 在 `/etc/systemd/system/`。
+
+补丁会动 openpilot 的**四个**文件，每个都留了 `.mirror.bak`：
+
+| 文件 | 改了什么 |
+|---|---|
+| `openpilot/system/ui/lib/application.py` | 主体：抽帧回读 + ffmpeg 启停 + 渲染门 |
+| `openpilot/common/params.py` | `UiMirrorEnabled` 放行 + 影子存储（扛 `clear_all()`） |
+| `openpilot/selfdrive/ui/mici/layouts/settings/device.py` | 设置页里的开关 |
+| `launch_env.sh` | 末尾挂一行，把 `/data/ui-mirror/mirror.env` source 进来 |
 
 ---
 
@@ -293,3 +349,11 @@ sudo systemctl restart comma.service
   设置页开关的位置要自己调（`apply_mirror_patch.py` 里那部分失败只会警告，不影响主功能）。
 - 打补丁的顺序不能反：必须先补 `common/params.py` 的影子存储，
   否则参数活不过第一次 `clear_all()`。
+- `mirror.env` 里每行都要写 `export`。`MIRROR_FPS=30` 这种光秃秃的赋值只是个
+  shell 变量，不进 `environ`，python 那侧 `os.getenv` 读不到 —— 表现就是"改了没反应"。
+  `launch_env.sh` 那侧加了 `set -a` 兜底，但别依赖它。
+- 想确认改动真的生效，看 ffmpeg 的命令行最直接：
+
+  ```bash
+  tr '\0' ' ' < /proc/$(pgrep -x ffmpeg | head -1)/cmdline | grep -o '\-r [0-9]*'
+  ```

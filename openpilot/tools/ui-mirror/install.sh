@@ -9,13 +9,15 @@
 # 做了什么：
 #   1. 装一份完整版 ffmpeg 到 /data/ui-mirror/bin/
 #      （comma 自带的 /usr/local/venv/bin/ffmpeg 是 openpilot 精简构建，
-#        只认 file/pipe 协议、没有 hls 封装器，发不出去）
-#   2. 装 HLS 网页服务并设为开机自启（systemd: ui-mirror-web）
-#   3. 给 openpilot 打补丁：渲染帧 -> ffmpeg -> HLS 切片 -> 网页
+#        只认 file/pipe 协议、没有 mpjpeg/hls 封装器，发不出去）
+#   2. 装低延迟网页服务并设为开机自启（systemd: ui-mirror-web）
+#      主通道是 MJPEG（端到端约 0.1 秒），HLS 通道保留给老浏览器兜底
+#   3. 写可调参数 /data/ui-mirror/mirror.env（帧率/画质/模式，30 帧）
+#   4. 给 openpilot 打补丁：渲染帧 -> ffmpeg -> 网页
 #      打补丁的顺序很重要：openpilot/common/params.py 必须先补上「影子存储」，
 #      否则参数会被 manager 的 clear_all() 删掉（详见 selfheal.sh 顶部注释）
-#   4. 装补丁自愈定时器（systemd: ui-mirror-selfheal.timer）
-#   5. 重启 openpilot 让补丁生效
+#   5. 装补丁自愈定时器（systemd: ui-mirror-selfheal.timer）
+#   6. 重启 openpilot 让补丁生效
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -175,6 +177,35 @@ else
   ok "镜像开关保持原样：$(cat /data/params/d/UiMirrorEnabled 2>/dev/null)"
 fi
 
+# ------------------------------------------------- 4.5 可调参数（帧率 / 画质 / 模式）
+# application.py 里的 MIRROR_* 是 os.getenv 读的，得有地方设。踩过的坑：
+#   * 给 comma.service 加 systemd drop-in 没用 —— comma.service 起的是常驻 tmux server，
+#     新 session 继承的是 server 启动那一刻的环境，之后的改动它看不到。
+#   * 真正每次启动都重读的只有 launch_chffrplus.sh 第 5 行的 `source launch_env.sh`，
+#     所以补丁往 launch_env.sh 末尾挂了一行：把 /data/ui-mirror/mirror.env source 进来。
+# /data/ui-mirror/ 不归 openpilot 更新管，所以放在这儿的参数不会被更新冲掉。
+ENVFILE="$PREFIX/mirror.env"
+if [ -f "$ENVFILE" ]; then
+  ok "可调参数保持原样：$ENVFILE（MIRROR_FPS=$(sed -n 's/^MIRROR_FPS=//p' "$ENVFILE" | tail -1)）"
+else
+  cat > "$ENVFILE" <<'ENVEOF'
+# ui-mirror 可调参数 —— 改完执行 `sudo systemctl restart comma.service` 生效
+#
+# 每行都要写 export（launch_env.sh 那侧虽然开了 set -a 兜底，但别依赖它）
+#
+# MIRROR_FPS      推流帧率。UI 本身始终 60fps，这里只决定回读+编码多少帧。
+#                 30 = 更跟手；15 = 省一半 CPU；10 = 最省
+# MIRROR_QUALITY  MJPEG 画质，2 最好 / 31 最省流量
+# MIRROR_MODE     mjpeg = 低延迟（默认） / hls = 兼容老浏览器
+# MIRROR_SCALE    画面缩放，负载高就调小，如 0.75
+export MIRROR_FPS=30
+export MIRROR_QUALITY=6
+export MIRROR_MODE=mjpeg
+ENVEOF
+  chown comma:comma "$ENVFILE" 2>/dev/null || true
+  ok "可调参数已写入 $ENVFILE（MIRROR_FPS=30）"
+fi
+
 # ------------------------------------------------------------------ 5. 重启
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 [ -n "$IP" ] || IP="<设备IP>"
@@ -195,7 +226,8 @@ cat <<EOF
 
     http://$IP:$PORT/
 
-  默认是低延迟 MJPEG 通道，端到端约 0.3 秒，画面基本跟手。
+  默认是低延迟 MJPEG 通道，端到端约 0.1 秒，画面基本跟手。
+  帧率默认 30（实测约 24），嫌发烫就在 mirror.env 里调到 20 或 15。
 
 VLC 也可以打开网络串流（用同一个地址）：
 
@@ -207,6 +239,11 @@ VLC 也可以打开网络串流（用同一个地址）：
 
 打开约 1 秒出画面，关掉立刻停，都不用重启。
 初次装完先等 30 秒左右，等 openpilot 把 UI 重新拉起来。
+
+调参（帧率 / 画质 / 模式）：
+
+    sudo nano $ENVFILE
+    sudo systemctl restart comma.service      # 改完重启生效
 
 排错：
     systemctl status $SERVICE                 # 网页服务

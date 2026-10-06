@@ -283,11 +283,27 @@ GRAB_NEW = GRAB_OLD + '''        elif MIRROR_AVAILABLE:
 # 所以停车、台架上没点火时 30 秒后屏幕一灭，ffmpeg 就再也起不来了。
 RENDER_GATE_OLD = """        # Skip rendering when screen is off
         if not self._should_render:
+          if PC:
+            rl.poll_input_events()
+          time.sleep(1 / self._target_fps)
+          yield False, 0.0, 0.0
+          continue
 """
 
 RENDER_GATE_NEW = """        # Skip rendering when screen is off
         # ui mirror: 镜像开着的时候例外 —— 屏幕灭了也要继续渲染，否则车机上跟着一起黑
         if not self._should_render and not ui_mirror_enabled():
+          if PC:
+            rl.poll_input_events()
+          # ui mirror: 这一支在 yield 之前就 continue 了，后面取帧那一段的
+          # _update_ui_mirror() 永远轮不到。少了这一句，就会出现：
+          # 屏幕关着的时候把开关关掉 -> ffmpeg 收不到停止信号 -> 一直挂在后台烧 CPU
+          #（实测约半个核）。补一次调用，它会看到开关已关，把 ffmpeg 收干净。
+          if MIRROR_AVAILABLE:
+            self._update_ui_mirror()
+          time.sleep(1 / self._target_fps)
+          yield False, 0.0, 0.0
+          continue
 """
 
 EDITS = [
@@ -457,9 +473,36 @@ DEVICE_ROW_NEW = '''      cabin_cam_btn,
       ui_mirror_toggle,
       terms_btn,'''
 
-# (相对仓库根目录的路径, [(说明, old, new), ...])
+# ---- launch_env.sh：给「可调参数」找个不会被更新冲掉的落脚点 ----
+# application.py 里的 MIRROR_* 是 os.getenv 读的，但环境变量得有人设。
+# 踩过的坑：给 comma.service 加 systemd drop-in 是没用的 —— comma.service 起的是
+# 常驻 tmux server，新 session 继承的是 server 启动那一刻的环境，之后的改动一律看不到。
+# 能稳定生效的只有 launch_chffrplus.sh 第 5 行的 `source "$DIR/launch_env.sh"`
+# （每次 launch 都重新读一遍）。
+# 真正调参的地方是 /data/ui-mirror/mirror.env：/data/ui-mirror/ 不归 openpilot 更新管，
+# 改完重启 openpilot 生效，更新也冲不掉。
+LAUNCH_ENV_MARK = "# ui-mirror config (added by apply_mirror_patch.py)"
+
+LAUNCH_ENV_OLD = '''export STAGING_ROOT="/data/safe_staging"
+'''
+
+LAUNCH_ENV_NEW = LAUNCH_ENV_OLD + '''
+# ui-mirror config (added by apply_mirror_patch.py)
+# 可调参数（帧率/画质/模式等）写在 /data/ui-mirror/mirror.env，
+# 改完 `sudo systemctl restart comma.service` 生效。见 openpilot/tools/ui-mirror/README.md
+#
+# set -a = allexport：里面的赋值自动导出。少了它会踩坑 ——
+# `MIRROR_FPS=30` 只是个 shell 变量，不进 environ，python 的 os.getenv 读不到。
+if [ -f /data/ui-mirror/mirror.env ]; then
+  set -a
+  . /data/ui-mirror/mirror.env
+  set +a
+fi
+'''
+
+# (相对仓库根目录的路径, 幂等标记, [(说明, old, new), ...])
 EXTRA_FILES = [
-    ("openpilot/common/params.py", [
+    ("openpilot/common/params.py", "UiMirrorEnabled", [
         ("参数注册", PARAMS_OLD, PARAMS_NEW),
         ("影子存储 helper", PARAMS_SHADOW_OLD, PARAMS_SHADOW_NEW),
         ("check_key 放行", PARAMS_CHECK_OLD, PARAMS_CHECK_NEW),
@@ -468,10 +511,13 @@ EXTRA_FILES = [
         ("remove 时清副本", PARAMS_REMOVE_OLD, PARAMS_REMOVE_NEW),
         ("clear_all 之后恢复", PARAMS_CLEAR_OLD, PARAMS_CLEAR_NEW),
     ]),
-    ("openpilot/selfdrive/ui/mici/layouts/settings/device.py", [
+    ("openpilot/selfdrive/ui/mici/layouts/settings/device.py", "UiMirrorEnabled", [
         ("import 开关组件", DEVICE_IMPORT_OLD, DEVICE_IMPORT_NEW),
         ("创建开关", DEVICE_LIST_OLD, DEVICE_LIST_NEW),
         ("放进设置列表", DEVICE_ROW_OLD, DEVICE_ROW_NEW),
+    ]),
+    ("launch_env.sh", LAUNCH_ENV_MARK, [
+        ("引入镜像配置", LAUNCH_ENV_OLD, LAUNCH_ENV_NEW),
     ]),
 ]
 
@@ -497,15 +543,15 @@ def patch_extra_files(basedir: str) -> None:
     return
 
   print()
-  for rel, edits in EXTRA_FILES:
+  for rel, marker, edits in EXTRA_FILES:
     target = root / rel
     if not target.exists():
       print(f"[!] 跳过 {rel}（文件不存在，版本不同？）")
       continue
 
     src = target.read_bytes().decode("utf-8")
-    if "UiMirrorEnabled" in src:
-      print(f"[✓] {rel} 已经带开关了")
+    if marker in src:
+      print(f"[✓] {rel} 已经打过了")
       continue
 
     changed = 0
@@ -519,10 +565,12 @@ def patch_extra_files(basedir: str) -> None:
     if not changed:
       continue
 
-    err = try_compile(src, rel)
-    if err:
-      print(f"[!] {rel} 改完语法检查没过，跳过：{err}")
-      continue
+    # launch_env.sh 是 shell 脚本，只有 python 文件才需要编译自检
+    if rel.endswith(".py"):
+      err = try_compile(src, rel)
+      if err:
+        print(f"[!] {rel} 改完语法检查没过，跳过：{err}")
+        continue
 
     backup = target.with_suffix(target.suffix + ".mirror.bak")
     if not backup.exists():

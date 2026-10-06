@@ -20,3 +20,15 @@ if [ -z "$AGNOS_VERSION" ]; then
 fi
 
 export STAGING_ROOT="/data/safe_staging"
+
+# ui-mirror config (added by apply_mirror_patch.py)
+# 可调参数（帧率/画质/模式等）写在 /data/ui-mirror/mirror.env，
+# 改完 `sudo systemctl restart comma.service` 生效。见 openpilot/tools/ui-mirror/README.md
+#
+# set -a = allexport：里面的赋值自动导出。少了它会踩坑 ——
+# `MIRROR_FPS=30` 只是个 shell 变量，不进 environ，python 的 os.getenv 读不到。
+if [ -f /data/ui-mirror/mirror.env ]; then
+  set -a
+  . /data/ui-mirror/mirror.env
+  set +a
+fi

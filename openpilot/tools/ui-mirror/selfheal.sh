@@ -24,6 +24,10 @@ PATCHER="$PREFIX/apply_mirror_patch.py"
 LOG="$PREFIX/selfheal.log"
 STAMP="$PREFIX/.last_restart"
 MARKER="ui mirror (added by apply_mirror_patch.py)"
+# launch_env.sh 里那一行「把 /data/ui-mirror/mirror.env source 进来」也要一起看着，
+# 不然帧率之类的可调参数在更新后会悄悄退回代码里的默认值。
+HOOK_MARK="ui-mirror config (added by apply_mirror_patch.py)"
+LAUNCH_ENV="$BASEDIR/launch_env.sh"
 DEVMARK="$BASEDIR/.git/.ui_mirror_devmode"
 DEBOUNCE=600
 
@@ -36,14 +40,20 @@ as_comma() { sudo -u comma "$@"; }
 # 文件就会跳过 overlay 覆盖（这是 openpilot 自己设计的「别动我的本地改动」信号）。
 mark_dev() { as_comma touch "$DEVMARK" 2>/dev/null || true; }
 
-if grep -qF "$MARKER" "$APP"; then
+APP_OK=0
+grep -qF "$MARKER" "$APP" 2>/dev/null && APP_OK=1
+HOOK_OK=0
+grep -qF "$HOOK_MARK" "$LAUNCH_ENV" 2>/dev/null && HOOK_OK=1
+
+if [ "$APP_OK" = 1 ] && [ "$HOOK_OK" = 1 ]; then
   mark_dev          # 补丁还在，只顺手刷新标记
   exit 0
 fi
 
-# ---- 补丁没了 ----
+# ---- 有东西没了 ----
 [ -f "$PATCHER" ] || { log "patch missing but $PATCHER not found, giving up"; exit 0; }
-log "patch missing in $APP, re-applying"
+[ "$APP_OK" = 1 ] || log "patch missing in $APP, re-applying"
+[ "$HOOK_OK" = 1 ] || log "mirror.env hook missing in $LAUNCH_ENV, re-applying"
 
 if ! as_comma python3 "$PATCHER" "$APP" --basedir "$BASEDIR" >> "$LOG" 2>&1; then
   log "patch re-apply FAILED (see above)"
