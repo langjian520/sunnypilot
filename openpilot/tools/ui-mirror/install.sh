@@ -57,6 +57,13 @@ mkdir -p "$PREFIX/bin" "$PREFIX/web" "$PREFIX/params" "$HLS_DIR"
 # 否则 ffmpeg 切片失败、镜像永远出不来
 chown comma:comma "$HLS_DIR" "$PREFIX/params" 2>/dev/null || true
 
+# 设备的 /tmp 是只有 150MB 的 tmpfs，而解压完整版 ffmpeg 只要 ~60MB 临时空间，
+# 再叠上传包副本和 mktemp 残留就爆「No space left on device」（2026-10-09 真机踩到，
+# 当时 /tmp 直接 100%）。把临时目录固定到 $PREFIX 所在的盘（通常是 /data，89G），
+# 一劳永逸 —— 即使调用者没设 TMPDIR 也不会踩。
+export TMPDIR="$PREFIX/.tmp"
+mkdir -p "$TMPDIR"
+
 # 注意：不能写成 ffmpeg ... | grep -q，grep 一匹配到就退出会让 ffmpeg 吃 SIGPIPE，
 # 配合 set -o pipefail 会被误判成失败。所以先把输出抓进变量再用 case 匹配。
 # 设备自带的 openpilot 精简版 ffmpeg 这三样全都没有，所以必须换完整版：
@@ -118,8 +125,12 @@ install -m 644 "$HERE/web/index.html" "$PREFIX/web/index.html"
 install -m 644 "$HERE/web/hls.min.js" "$PREFIX/web/hls.min.js"
 # 自愈脚本和补丁脚本放 /data（不在 openpilot 里），这样 openpilot 被更新覆盖也不影响自愈
 install -m 755 "$HERE/apply_mirror_patch.py" "$PREFIX/apply_mirror_patch.py"
+install -m 755 "$HERE/apply_mirror_supersample.py" "$PREFIX/apply_mirror_supersample.py"
 install -m 755 "$HERE/selfheal.sh" "$PREFIX/selfheal.sh"
-ok "网页服务 + 自愈脚本 -> $PREFIX/"
+# safe_restart.sh 必须装上：它是唯一安全的重启入口。裸跑 systemctl restart comma.service
+# 会踩到 comma.sh 的 tap-reset（恢复出厂设置）分支 —— 2026-10-09 真机事故。
+install -m 755 "$HERE/safe_restart.sh" "$PREFIX/safe_restart.sh"
+ok "网页服务 + 自愈脚本 + 安全重启 -> $PREFIX/"
 
 # AGNOS 的根分区默认是只读挂载（ro），写 systemd unit 之前必须先 remount rw
 ROOT_WAS_RO=0
@@ -189,15 +200,25 @@ if [ -f "$ENVFILE" ]; then
   ok "可调参数保持原样：$ENVFILE（MIRROR_FPS=$(sed -n 's/^MIRROR_FPS=//p' "$ENVFILE" | tail -1)）"
 else
   cat > "$ENVFILE" <<'ENVEOF'
-# ui-mirror 可调参数 —— 改完执行 `sudo systemctl restart comma.service` 生效
+# ui-mirror 可调参数
+#
+# ⚠️ 改完**不要**直接 `sudo systemctl restart comma.service`。设备开机后被摸过 5 次
+#    以上屏幕时（touch_count > 4），裸重启会命中 /usr/comma/comma.sh 的 tap-reset
+#    分支，**恢复出厂设置，/data 全清**。一律用：
+#        sudo bash /data/ui-mirror/safe_restart.sh
+#    （2026-10-09 真机踩过一次。原因见 safe_restart.sh 头部注释。）
 #
 # 每行都要写 export（launch_env.sh 那侧虽然开了 set -a 兜底，但别依赖它）
 #
-# MIRROR_FPS      推流帧率。UI 本身始终 60fps，这里只决定回读+编码多少帧。
-#                 30 = 更跟手；15 = 省一半 CPU；10 = 最省
-# MIRROR_QUALITY  MJPEG 画质，2 最好 / 31 最省流量
-# MIRROR_MODE     mjpeg = 低延迟（默认） / hls = 兼容老浏览器
-# MIRROR_SCALE    画面缩放，负载高就调小，如 0.75
+# MIRROR_FPS          推流帧率。UI 本身始终 60fps，这里只决定回读+编码多少帧。
+#                     30 = 更跟手；15 = 省一半 CPU；10 = 最省
+# MIRROR_QUALITY      MJPEG 画质，2 最好 / 31 最省流量
+# MIRROR_MODE         mjpeg = 低延迟（默认） / hls = 兼容老浏览器
+# MIRROR_SCALE        画面缩放，负载高就调小，如 0.75（插值放大，不会多出细节）
+# MIRROR_RENDER_SCALE ⚠️ 已废弃，不要设。UI 内部超采样倍数，2026-10-09 真机实测失败：
+#                     打完补丁后画面只渲染在纹理左上 1/4，设备屏上看起来像屏幕坏了
+#                     （splash/UI 挤在左侧、文字被截断）。原因见 README 的
+#                     「分辨率 / 清晰度」一节。保持默认 1.0 即可。
 export MIRROR_FPS=30
 export MIRROR_QUALITY=6
 export MIRROR_MODE=mjpeg
@@ -213,10 +234,13 @@ IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 OFFROAD="$(cat /data/params/d/IsOffroad 2>/dev/null || echo 1)"
 say ""
 if [ "$OFFROAD" != "1" ]; then
-  warn "设备不在停车状态，已跳过重启。停车后执行： sudo systemctl restart comma.service"
+  warn "设备不在停车状态，已跳过重启。停车后执行： sudo bash $PREFIX/safe_restart.sh"
 else
   say "重启 openpilot 让补丁生效 ..."
-  systemctl restart comma.service || warn "重启失败，可手动执行 sudo systemctl restart comma.service"
+  # 一律走 safe_restart.sh。它会先把 /tmp/booted 补上，让 comma.sh 跳过整段出厂
+  # 重置判断。裸跑 systemctl restart comma.service，在 touch_count>4（开机后摸过
+  # 5 次以上屏幕）时会直接恢复出厂设置，/data 全清。2026-10-09 真机踩过一次。
+  bash "$PREFIX/safe_restart.sh" || warn "重启失败，可手动执行 sudo bash $PREFIX/safe_restart.sh"
 fi
 
 cat <<EOF
@@ -240,10 +264,27 @@ VLC 也可以打开网络串流（用同一个地址）：
 打开约 1 秒出画面，关掉立刻停，都不用重启。
 初次装完先等 30 秒左右，等 openpilot 把 UI 重新拉起来。
 
-调参（帧率 / 画质 / 模式）：
+调参（帧率 / 画质 / 模式 / 超采样倍数）：
 
     sudo nano $ENVFILE
-    sudo systemctl restart comma.service      # 改完重启生效
+    sudo bash $PREFIX/safe_restart.sh         # 改完重启生效
+
+  ⚠️ 绝对不要直接 sudo systemctl restart comma.service。
+     设备只要开机后被摸过 5 次以上屏幕（touch_count>4），裸重启就会命中
+     /usr/comma/comma.sh 里「连点屏幕 = 恢复出厂设置」的分支，/data 会被清空。
+     safe_restart.sh 做的就是先补 /tmp/booted 把那段判断跳过。详见该脚本头部。
+
+提高投屏清晰度：
+
+    投屏流的分辨率 = 设备自己那块屏的原生分辨率（mici 是 536x240）。
+    「拉大已有画面」（MIRROR_SCALE）和「让 UI 内部超采样」（MIRROR_RENDER_SCALE）
+    都试过了：前者不会多出细节，后者 2026-10-09 真机实测会把画面挤到纹理左上 1/4，
+    在设备屏上看起来像屏幕坏了，已废弃。
+
+    目前唯一有用且安全的做法是把 JPEG 质量调高：
+
+    sudo nano $ENVFILE              # 把 MIRROR_QUALITY 从 6 改成 2
+    sudo bash $PREFIX/safe_restart.sh
 
 排错：
     systemctl status $SERVICE                 # 网页服务

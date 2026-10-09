@@ -488,8 +488,11 @@ LAUNCH_ENV_OLD = '''export STAGING_ROOT="/data/safe_staging"
 
 LAUNCH_ENV_NEW = LAUNCH_ENV_OLD + '''
 # ui-mirror config (added by apply_mirror_patch.py)
-# 可调参数（帧率/画质/模式等）写在 /data/ui-mirror/mirror.env，
-# 改完 `sudo systemctl restart comma.service` 生效。见 openpilot/tools/ui-mirror/README.md
+# 可调参数（帧率/画质/模式/超采样倍数）写在 /data/ui-mirror/mirror.env。
+# 改完用 `sudo bash /data/ui-mirror/safe_restart.sh` 生效 —— **不要**裸跑
+# `sudo systemctl restart comma.service`：设备开机后被摸过 5 次以上屏幕时，
+# 裸重启会命中 /usr/comma/comma.sh 的 tap-reset 分支，恢复出厂设置、/data 全清。
+# （2026-10-09 真机踩过一次。）见 openpilot/tools/ui-mirror/README.md
 #
 # set -a = allexport：里面的赋值自动导出。少了它会踩坑 ——
 # `MIRROR_FPS=30` 只是个 shell 变量，不进 environ，python 的 os.getenv 读不到。

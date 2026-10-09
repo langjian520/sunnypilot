@@ -76,6 +76,30 @@ if [ $((now - last)) -lt "$DEBOUNCE" ]; then
   exit 0
 fi
 
+# ---- /tmp/booted 哨兵：重启前必须补上，否则可能恢复出厂设置 ----
+#
+# /usr/comma/comma.sh 在**开机路径**上有一段判断：
+#   if [ ! -f /tmp/booted ]; then
+#     ...
+#     elif (( "$(cat /sys/class/input/input2/device/touch_count)" > 4 )); then
+#       $RESET --tap-reset        # ← 恢复出厂设置
+#   fi
+# /tmp 是内存盘、且会被 tmpfiles 清理，所以「重启服务」时这个哨兵经常已经不在；
+# 而 touch_count 记的是本次开机以来的触摸次数，正常用一会儿就 > 4。
+#
+# 自愈定时器是**无人值守**的，所以这里尤其危险：openpilot 一更新把补丁冲掉，
+# 自愈就会在后台把设备恢复出厂设置。2026-10-09 真机上真的发生过一次。
+# 补哨兵失败就宁可不重启 —— 补丁晚点生效远好于 /data 被清空。
+if [ ! -f /tmp/booted ]; then
+  if touch /tmp/booted 2>/dev/null; then
+    log "created /tmp/booted (guards comma.sh tap-reset branch)"
+  fi
+fi
+if [ ! -f /tmp/booted ]; then
+  log "restart REFUSED: /tmp/booted guard is not in place (would risk factory reset)"
+  exit 0
+fi
+
 printf '%s\n' "$now" > "$STAMP"
 log "restarting comma.service to activate patch"
 systemctl restart comma.service >> "$LOG" 2>&1
